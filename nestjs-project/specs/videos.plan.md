@@ -94,3 +94,13 @@ Registra o vídeo como rascunho, gera a URL única e abre o multipart no storage
 **Steps:**
   1. POST /videos duas vezes com o mesmo corpo
     - expect: os dois `slug`s são diferentes
+
+#### 1.8. reject-invalid-token
+
+**Covers AC:** #9
+**Source:** auto
+**Last sync:** 2026-10-30T18:41:07Z
+
+**Steps:**
+  1. POST /videos com um token inválido
+    - expect: HTTP 401

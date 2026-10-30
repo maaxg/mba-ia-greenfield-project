@@ -116,3 +116,13 @@ Expõe o vídeo pronto na URL única e redireciona streaming, download e thumbna
     - expect: HTTP 401
   2. GET /videos/:slug/status com o token do outro usuário
     - expect: HTTP 403
+
+#### 6.2. reject-invalid-token-on-status-route
+
+**Covers AC:** #7
+**Source:** auto
+**Last sync:** 2026-10-30T18:41:07Z
+
+**Steps:**
+  1. GET /videos/:slug/status com um token inválido
+    - expect: HTTP 401
