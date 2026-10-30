@@ -5,7 +5,7 @@ libs:
     context7_id: "/taskforcesh/bullmq"
     fetched_at: "2026-10-30T09:50:00-03:00"
   "@nestjs/bullmq":
-    version: "^12.0.0"
+    version: "^11.0.5"
     context7_id: "/taskforcesh/bullmq"
     fetched_at: "2026-10-30T09:50:00-03:00"
   "@aws-sdk/client-s3":
@@ -31,6 +31,7 @@ Documentação destilada das bibliotecas decididas nesta fase. Consultada no Con
 - `Worker` aceita `concurrency`; `Queue.add(name, data, opts)` aceita `attempts`, `backoff: { type: 'exponential', delay }`, `jobId`, `removeOnComplete` e `removeOnFail`.
 - Lançar `UnrecoverableError` move o job direto para `failed`, ignorando as tentativas restantes.
 - O `jobId` identifica o job; não é reenfileirado se já existir com o mesmo id.
+- No `bullmq` 6 o `ioredis` é dependência opcional e precisa ser instalado no projeto.
 
 ```typescript
 import { UnrecoverableError } from 'bullmq';

@@ -1,7 +1,10 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { ConfigModule } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
-import { VideoUploadExpiredException } from '../common/exceptions/domain.exception';
+import {
+  VideoUploadExpiredException,
+  VideoUploadIncompleteException,
+} from '../common/exceptions/domain.exception';
 import storageConfig from '../config/storage.config';
 import { StorageService } from './storage.service';
 
@@ -126,5 +129,19 @@ describe('StorageService (integration)', () => {
         { part_number: 1, etag: '"abc"' },
       ]),
     ).rejects.toThrow(VideoUploadExpiredException);
+  });
+
+  it('should report undersized parts as an incomplete upload', async () => {
+    const key = newKey();
+    const uploadId = await service.createMultipartUpload(key, 'video/mp4');
+    const etag1 = await putPart(key, uploadId, 1, randomBytes(1024));
+    const etag2 = await putPart(key, uploadId, 2, randomBytes(1024));
+
+    await expect(
+      service.completeMultipartUpload(key, uploadId, [
+        { part_number: 1, etag: etag1 },
+        { part_number: 2, etag: etag2 },
+      ]),
+    ).rejects.toThrow(VideoUploadIncompleteException);
   });
 });

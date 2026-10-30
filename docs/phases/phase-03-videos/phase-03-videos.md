@@ -24,7 +24,7 @@ Entregar upload de vídeos de até 10GB direto ao object storage, com pré-cadas
 
 **Technical actions:**
 
-1. Instalar `bullmq@^6.5.1`, `@nestjs/bullmq@^12.0.0`, `@aws-sdk/client-s3@^3.1160.0` e `@aws-sdk/s3-request-presigner@^3.1160.0` (per `phase-03-videos/TD-01`, `phase-03-videos/TD-02`)
+1. Instalar `bullmq@^6.5.1`, `ioredis@^5`, `@nestjs/bullmq@^11.0.5`, `@aws-sdk/client-s3@^3.1160.0` e `@aws-sdk/s3-request-presigner@^3.1160.0` (per `phase-03-videos/TD-01`, `phase-03-videos/TD-02`)
 2. Adicionar `ffmpeg` ao `Dockerfile.dev`, compartilhado por API e worker (per `phase-03-videos/TD-04`)
 3. Adicionar ao `compose.yaml` os serviços `redis` (`noeviction`, sem porta no host), `minio` (`pgsty/minio`, volume nomeado, healthcheck), `minio-init` (cria `S3_BUCKET`) e `video-worker` (`npm run start:worker`) (per `phase-03-videos/TD-01`, `phase-03-videos/TD-03`, `phase-03-videos/TD-04`)
 4. Criar `src/config/storage.config.ts`, `src/config/queue.config.ts` e `src/config/video.config.ts`; estender `env.validation.ts`, `.env.example` e `AppModule` (per `phase-03-videos/TD-09`)

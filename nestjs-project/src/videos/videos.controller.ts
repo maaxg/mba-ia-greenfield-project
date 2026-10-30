@@ -1,4 +1,12 @@
-import { Body, Controller, Get, HttpCode, Param, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Post,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -10,6 +18,8 @@ import { SkipThrottle } from '@nestjs/throttler';
 import type { JwtPayload } from '../auth/auth.types';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { ApiErrorEnvelope } from '../common/openapi/api-error-envelope.dto';
+import { CompleteUploadDto } from './dto/complete-upload.dto';
+import { CompleteUploadResponseDto } from './dto/complete-upload-response.dto';
 import { InitiateUploadDto } from './dto/initiate-upload.dto';
 import { InitiateUploadResponseDto } from './dto/initiate-upload-response.dto';
 import { ListUploadedPartsResponseDto } from './dto/list-uploaded-parts-response.dto';
@@ -105,5 +115,53 @@ export class VideosController {
     return {
       parts: await this.videosService.listUploadedParts(user.sub, slug),
     };
+  }
+
+  @Post(':slug/upload/complete')
+  @HttpCode(202)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Complete a video upload',
+    description:
+      'Verifies the uploaded parts, assembles the file in the storage and queues the video for background processing.',
+  })
+  @ApiResponse({
+    status: 202,
+    description: 'Upload closed and processing queued',
+    type: CompleteUploadResponseDto,
+  })
+  @errorResponse(400, 'Invalid request body')
+  @errorResponse(401, 'Missing or invalid access token')
+  @errorResponse(403, 'The user does not own this video')
+  @errorResponse(404, 'Video not found')
+  @errorResponse(409, 'The upload is closed or no longer exists')
+  @errorResponse(422, 'Uploaded parts do not match the declared file')
+  @errorResponse(503, 'The processing queue is unavailable')
+  completeUpload(
+    @CurrentUser() user: JwtPayload,
+    @Param('slug') slug: string,
+    @Body() dto: CompleteUploadDto,
+  ): Promise<CompleteUploadResponseDto> {
+    return this.videosService.completeUpload(user.sub, slug, dto.parts);
+  }
+
+  @Delete(':slug/upload')
+  @HttpCode(204)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Cancel a video upload',
+    description:
+      'Aborts the multipart upload in the storage and removes the draft.',
+  })
+  @ApiResponse({ status: 204, description: 'Upload cancelled' })
+  @errorResponse(401, 'Missing or invalid access token')
+  @errorResponse(403, 'The user does not own this video')
+  @errorResponse(404, 'Video not found')
+  @errorResponse(409, 'The upload is already closed')
+  cancelUpload(
+    @CurrentUser() user: JwtPayload,
+    @Param('slug') slug: string,
+  ): Promise<void> {
+    return this.videosService.cancelUpload(user.sub, slug);
   }
 }

@@ -12,7 +12,10 @@ import {
   UploadPartCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { VideoUploadExpiredException } from '../common/exceptions/domain.exception';
+import {
+  VideoUploadExpiredException,
+  VideoUploadIncompleteException,
+} from '../common/exceptions/domain.exception';
 import storageConfig from '../config/storage.config';
 import {
   READ_URL_TTL_SECONDS,
@@ -23,6 +26,12 @@ import type {
   PresignReadOptions,
   UploadedPart,
 } from './storage.types';
+
+const REJECTED_PARTS_ERRORS = new Set([
+  'EntityTooSmall',
+  'InvalidPart',
+  'InvalidPartOrder',
+]);
 
 @Injectable()
 export class StorageService {
@@ -197,8 +206,12 @@ export class StorageService {
   }
 
   private translateUploadError(err: unknown): unknown {
-    return err instanceof NoSuchUpload
-      ? new VideoUploadExpiredException()
-      : err;
+    if (err instanceof NoSuchUpload) {
+      return new VideoUploadExpiredException();
+    }
+    if (err instanceof Error && REJECTED_PARTS_ERRORS.has(err.name)) {
+      return new VideoUploadIncompleteException();
+    }
+    return err;
   }
 }

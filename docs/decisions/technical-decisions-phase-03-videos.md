@@ -51,7 +51,11 @@ _Fontes consultadas:_ documentação via Context7 (`/taskforcesh/bullmq`, `/aws/
 
 **Note:** Redis roda com `maxmemory-policy noeviction` e sem porta publicada no host: só a rede Compose o acessa.
 
-**Libraries:** `bullmq@^6.5.1`, `@nestjs/bullmq@^12.0.0`
+**Libraries:** `bullmq@^6.5.1`, `@nestjs/bullmq@^11.0.5`, `ioredis@^5`
+
+**Revisions:**
+- 2026-10-30 — `@nestjs/bullmq` fixado em `^11.0.5` em vez de `^12.0.0`. Rationale: a linha 12 é publicada só em ESM e o Jest do projeto, em CommonJS, não a carrega; a 11 é a linha do Nest 11 instalado e aceita `bullmq` 6.
+- 2026-10-30 — `ioredis` adicionado como dependência direta. Rationale: no `bullmq` 6 ele é opcional e sem ele nenhuma conexão com Redis abre.
 ---
 
 ## TD-02: Estratégia de upload de arquivos de até 10GB

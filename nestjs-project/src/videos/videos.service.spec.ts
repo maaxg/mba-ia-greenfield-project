@@ -5,10 +5,13 @@ import {
   VideoAccessDeniedException,
   VideoNotFoundException,
   VideoPartOutOfRangeException,
+  VideoProcessingUnavailableException,
   VideoTooLargeException,
   VideoUploadClosedException,
+  VideoUploadExpiredException,
+  VideoUploadIncompleteException,
 } from '../common/exceptions/domain.exception';
-import { VideoStatus } from './videos.constants';
+import { VIDEO_FAILURE_REASON, VideoStatus } from './videos.constants';
 import { VideosService } from './videos.service';
 
 const MIB = 1024 * 1024;
@@ -44,6 +47,7 @@ describe('VideosService', () => {
   let repository: Record<string, jest.Mock>;
   let channels: Record<string, jest.Mock>;
   let storage: Record<string, jest.Mock>;
+  let queue: Record<string, jest.Mock>;
   let service: VideosService;
 
   beforeEach(() => {
@@ -59,8 +63,9 @@ describe('VideosService', () => {
         status: VideoStatus.DRAFT,
         ...video,
       })),
-      update: jest.fn(),
+      update: jest.fn().mockResolvedValue({ affected: 1 }),
       delete: jest.fn(),
+      existsBy: jest.fn().mockResolvedValue(false),
       createQueryBuilder: jest.fn(() => queryBuilder),
     };
     channels = { findByUserId: jest.fn().mockResolvedValue({ id: 'channel' }) };
@@ -68,11 +73,15 @@ describe('VideosService', () => {
       createMultipartUpload: jest.fn().mockResolvedValue('upload'),
       presignUploadPart: jest.fn().mockResolvedValue('http://signed'),
       listParts: jest.fn().mockResolvedValue([]),
+      completeMultipartUpload: jest.fn(),
+      abortMultipartUpload: jest.fn(),
     };
+    queue = { enqueueProcessing: jest.fn() };
     service = new VideosService(
       repository as any,
       channels as any,
       storage as any,
+      queue as any,
       { maxSizeBytes: TEN_GIB, partSizeBytes: 64 * MIB } as any,
     );
   });
@@ -143,6 +152,7 @@ describe('VideosService', () => {
         repository as any,
         channels as any,
         storage as any,
+        queue as any,
         { maxSizeBytes: 200000 * MIB, partSizeBytes: 5 * MIB } as any,
       );
 
@@ -226,6 +236,136 @@ describe('VideosService', () => {
       await expect(
         service.signUploadParts(USER_ID, 'slug', [1]),
       ).rejects.toThrow(VideoUploadClosedException);
+    });
+  });
+
+  describe('completeUpload', () => {
+    const parts = [{ part_number: 1, etag: '"a"' }];
+
+    beforeEach(() => {
+      storage.listParts.mockResolvedValue([
+        { part_number: 1, etag: '"a"', size_bytes: 100 * MIB },
+      ]);
+    });
+
+    it('should complete the multipart and queue the video', async () => {
+      const result = await service.completeUpload(USER_ID, 'slug', parts);
+
+      expect(result).toEqual({
+        slug: 'abcdefghijk',
+        status: VideoStatus.PROCESSING,
+      });
+      expect(queue.enqueueProcessing).toHaveBeenCalledWith('video-id');
+    });
+
+    it('should reject parts that do not reach the declared size', async () => {
+      storage.listParts.mockResolvedValue([
+        { part_number: 1, etag: '"a"', size_bytes: MIB },
+      ]);
+
+      await expect(
+        service.completeUpload(USER_ID, 'slug', parts),
+      ).rejects.toThrow(VideoUploadIncompleteException);
+      expect(repository.update).not.toHaveBeenCalled();
+    });
+
+    it('should reject an ETag the storage does not know', async () => {
+      await expect(
+        service.completeUpload(USER_ID, 'slug', [
+          { part_number: 1, etag: '"b"' },
+        ]),
+      ).rejects.toThrow(VideoUploadIncompleteException);
+    });
+
+    it('should report the upload as closed when losing the transition', async () => {
+      repository.update.mockResolvedValue({ affected: 0 });
+
+      await expect(
+        service.completeUpload(USER_ID, 'slug', parts),
+      ).rejects.toThrow(VideoUploadClosedException);
+      expect(storage.completeMultipartUpload).not.toHaveBeenCalled();
+    });
+
+    it('should report the upload as closed when a concurrent completion removed it', async () => {
+      storage.listParts.mockRejectedValue(new VideoUploadExpiredException());
+      repository.existsBy.mockResolvedValue(true);
+
+      await expect(
+        service.completeUpload(USER_ID, 'slug', parts),
+      ).rejects.toThrow(VideoUploadClosedException);
+    });
+
+    it('should report an upload the storage lost as expired', async () => {
+      storage.listParts.mockRejectedValue(new VideoUploadExpiredException());
+
+      await expect(
+        service.completeUpload(USER_ID, 'slug', parts),
+      ).rejects.toThrow(VideoUploadExpiredException);
+    });
+
+    it('should return to draft when the storage refuses the completion', async () => {
+      storage.completeMultipartUpload.mockRejectedValue(new Error('storage'));
+
+      await expect(
+        service.completeUpload(USER_ID, 'slug', parts),
+      ).rejects.toThrow('storage');
+      expect(repository.update).toHaveBeenLastCalledWith(
+        { id: 'video-id', status: VideoStatus.PROCESSING },
+        { status: VideoStatus.DRAFT },
+      );
+    });
+
+    it('should fail the video when the queue is unavailable', async () => {
+      queue.enqueueProcessing.mockRejectedValue(new Error('redis'));
+
+      await expect(
+        service.completeUpload(USER_ID, 'slug', parts),
+      ).rejects.toThrow(VideoProcessingUnavailableException);
+      expect(repository.update).toHaveBeenLastCalledWith('video-id', {
+        status: VideoStatus.FAILED,
+        failure_reason: VIDEO_FAILURE_REASON.ENQUEUE_FAILED,
+      });
+    });
+  });
+
+  describe('cancelUpload', () => {
+    it('should abort the multipart and remove the draft', async () => {
+      await service.cancelUpload(USER_ID, 'slug');
+
+      expect(storage.abortMultipartUpload).toHaveBeenCalled();
+      expect(repository.delete).toHaveBeenCalledWith({
+        id: 'video-id',
+        status: VideoStatus.DRAFT,
+      });
+    });
+
+    it('should remove the draft when the storage forgot the upload', async () => {
+      storage.abortMultipartUpload.mockRejectedValue(
+        new VideoUploadExpiredException(),
+      );
+
+      await service.cancelUpload(USER_ID, 'slug');
+
+      expect(repository.delete).toHaveBeenCalled();
+    });
+
+    it('should keep the draft when the abort fails for another reason', async () => {
+      storage.abortMultipartUpload.mockRejectedValue(new Error('storage'));
+
+      await expect(service.cancelUpload(USER_ID, 'slug')).rejects.toThrow(
+        'storage',
+      );
+      expect(repository.delete).not.toHaveBeenCalled();
+    });
+
+    it('should refuse to cancel a video in processing', async () => {
+      queryBuilder.getOne.mockResolvedValue(
+        ownedVideo({ status: VideoStatus.PROCESSING }),
+      );
+
+      await expect(service.cancelUpload(USER_ID, 'slug')).rejects.toThrow(
+        VideoUploadClosedException,
+      );
     });
   });
 });
