@@ -298,10 +298,13 @@ export class VideosService {
       await this.videoQueueService.enqueueProcessing(videoId);
     } catch (err) {
       this.logger.error(`Could not queue video ${videoId}`, err);
-      await this.videoRepository.update(videoId, {
-        status: VideoStatus.FAILED,
-        failure_reason: VIDEO_FAILURE_REASON.ENQUEUE_FAILED,
-      });
+      await this.videoRepository.update(
+        { id: videoId, status: VideoStatus.PROCESSING },
+        {
+          status: VideoStatus.FAILED,
+          failure_reason: VIDEO_FAILURE_REASON.ENQUEUE_FAILED,
+        },
+      );
       throw new VideoProcessingUnavailableException();
     }
   }

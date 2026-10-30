@@ -7,7 +7,11 @@ libs:
   "@nestjs/bullmq":
     version: "^11.0.5"
     context7_id: "/taskforcesh/bullmq"
-    fetched_at: "2026-10-30T09:50:00-03:00"
+    fetched_at: "2026-10-30T14:16:39-03:00"
+  ioredis:
+    version: "^5.11.1"
+    context7_id: "/redis/ioredis"
+    fetched_at: "2026-10-30T14:16:38-03:00"
   "@aws-sdk/client-s3":
     version: "^3.1160.0"
     context7_id: "/aws/aws-sdk-js-v3"
@@ -17,12 +21,12 @@ libs:
     context7_id: "/aws/aws-sdk-js-v3"
     fetched_at: "2026-10-30T09:50:00-03:00"
 sources_mtime:
-  docs/decisions/technical-decisions-phase-03-videos.md: "2026-10-30T10:18:07-03:00"
+  docs/decisions/technical-decisions-phase-03-videos.md: "2026-10-30T14:19:40.717837827-03:00"
 ---
 
 # phase-03-videos — Library References
 
-Documentação destilada das bibliotecas decididas nesta fase. Consultada no Context7 pela API REST pública, porque o servidor MCP não estava carregado na sessão. O projeto instalou as versões acima; o Context7 lista `bullmq` até `v6.3.11` e `aws-sdk-js-v3` até `v3.1153.0`, portanto a API foi conferida também pela compilação (`tsc`) contra os pacotes instalados.
+Documentação destilada das bibliotecas decididas nesta fase. Consultada no Context7 pela API REST pública, porque as ferramentas MCP não estavam disponíveis na sessão. Isso difere de `plan-resolve`, que prevê a consulta pelo MCP. O projeto instalou as versões acima; o Context7 lista `bullmq` até `v6.3.11`, `aws-sdk-js-v3` até `v3.1153.0` e `ioredis` em `v5_4_0` e `v6.0.0`, portanto a API foi conferida também pela compilação (`tsc`) contra os pacotes instalados.
 
 ### bullmq
 
@@ -31,7 +35,6 @@ Documentação destilada das bibliotecas decididas nesta fase. Consultada no Con
 - `Worker` aceita `concurrency`; `Queue.add(name, data, opts)` aceita `attempts`, `backoff: { type: 'exponential', delay }`, `jobId`, `removeOnComplete` e `removeOnFail`.
 - Lançar `UnrecoverableError` move o job direto para `failed`, ignorando as tentativas restantes.
 - O `jobId` identifica o job; não é reenfileirado se já existir com o mesmo id.
-- No `bullmq` 6 o `ioredis` é dependência opcional e precisa ser instalado no projeto.
 
 ```typescript
 import { UnrecoverableError } from 'bullmq';
@@ -58,11 +61,22 @@ class VideoProcessor extends WorkerHost {
 }
 ```
 
+### ioredis
+
+**Source:** `/redis/ioredis` (Context7). Maps to `phase-03-videos/TD-01`.
+
+- No `bullmq` 6 o `ioredis` é dependência opcional e precisa ser instalado no projeto; o código não o importa diretamente, e a conexão é aberta pelo BullMQ com `host` e `port`.
+- `maxRetriesPerRequest` define quantas tentativas de reconexão um comando espera antes de falhar (padrão 20); `null` faz o comando esperar até a conexão voltar.
+
+```typescript
+const redis = new Redis({ host: 'redis', port: 6379, maxRetriesPerRequest: null });
+```
+
 ### @aws-sdk/client-s3
 
 **Source:** `/aws/aws-sdk-js-v3` (Context7). Maps to `phase-03-videos/TD-02`, `TD-03`.
 
-- Comandos usados: `CreateMultipartUploadCommand`, `UploadPartCommand`, `ListPartsCommand`, `CompleteMultipartUploadCommand`, `AbortMultipartUploadCommand`, `GetObjectCommand`, `PutObjectCommand`, `HeadObjectCommand`.
+- Comandos usados: `CreateMultipartUploadCommand`, `UploadPartCommand`, `ListPartsCommand`, `CompleteMultipartUploadCommand`, `AbortMultipartUploadCommand`, `GetObjectCommand`, `PutObjectCommand`.
 - MinIO exige `forcePathStyle: true`.
 - Limites do multipart ([AWS](https://docs.aws.amazon.com/AmazonS3/latest/userguide/qfacts.html)): até 10.000 partes; cada parte de 5 MiB a 5 GiB, exceto a última, que não tem mínimo.
 

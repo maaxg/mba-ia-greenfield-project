@@ -126,7 +126,7 @@ Conventions for **how to write** each kind of test (mocking patterns, AAA struct
 
 These settings are required in `package.json` (jest config) and `test/jest-e2e.json` for the project's tests to work correctly:
 
-- `setupFiles: ["dotenv/config"]` — without this, `.env` is not loaded inside the Jest process. `DB_HOST`, `JWT_SECRET`, etc. fall back to undefined or to the host's `localhost`, breaking container-to-container DNS.
+- `setupFiles: ["dotenv/config", ".../setup-env.ts"]` — `dotenv/config` loads `.env` inside the Jest process; without it, `DB_HOST`, `JWT_SECRET`, etc. fall back to undefined or to the host's `localhost`, breaking container-to-container DNS. `src/test/setup-env.ts` is listed in both `package.json` and `test/jest-e2e.json`.
 - `testRegex: '.*\\.(spec|integration-spec)\\.ts$'` — covers both unit (`*.spec.ts`) and integration (`*.integration-spec.ts`) suffixes.
 
 Do not add new test-file suffixes; if a new test type is needed, update the regex deliberately.
@@ -176,9 +176,9 @@ The file never passes through the API. The client calls `POST /videos`, requests
 
 ### Status and failures
 
-`status` tracks the file lifecycle: `draft → processing → ready | failed`. Transitions are conditional `UPDATE`s, so concurrent completions and job redelivery are safe. Publication (Phase 04) is a separate concern and must not be added to this enum.
+`status` tracks the file lifecycle: `draft → processing → ready | failed`. A completion the storage refuses reverts `processing → draft`, so the client can retry. Transitions are conditional `UPDATE`s, so concurrent completions and job redelivery are safe. Publication (Phase 04) is a separate concern and must not be added to this enum.
 
-The job `process-video` in queue `video-processing` carries `{ videoId }`, uses the video id as `jobId` and retries 3 times with exponential backoff. An invalid file throws `UnrecoverableError` and ends in `failed` with `INVALID_VIDEO_FILE`; exhausted attempts end with `PROCESSING_ERROR`; a queue failure during completion ends with `ENQUEUE_FAILED` and returns 503.
+The job `process-video` in queue `video-processing` carries `{ videoId }`, uses the video id as `jobId` and runs up to 3 attempts with exponential backoff. An invalid file throws `UnrecoverableError` and ends in `failed` with `INVALID_VIDEO_FILE`; exhausted attempts end with `PROCESSING_ERROR`; a queue failure during completion ends with `ENQUEUE_FAILED` and returns 503.
 
 FFmpeg runs through `child_process.spawn` and reads the signed URL over HTTP, so the worker never copies the video to disk. `fluent-ffmpeg` is deprecated; do not add it.
 
@@ -187,13 +187,15 @@ FFmpeg runs through `child_process.spawn` and reads the signed URL over HTTP, so
 - One private bucket: `videos/{id}/original{ext}` and `videos/{id}/thumbnail.jpg`.
 - `StorageService` keeps two clients: internal (`S3_ENDPOINT`) and signing (`S3_PUBLIC_ENDPOINT`). The host is part of the signature, so a URL signed for one host fails on another.
 - `src/test/setup-env.ts` makes tests sign with `S3_ENDPOINT`, because the public host is not reachable from inside a container.
-- Limits: `VIDEO_MAX_SIZE_BYTES` (10 GiB) and `VIDEO_PART_SIZE_BYTES` (64 MiB).
+- Storage variables: `S3_ENDPOINT`, `S3_PUBLIC_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_BUCKET`.
+- Queue variables: `REDIS_HOST`, `REDIS_PORT`.
+- Limits and worker: `VIDEO_MAX_SIZE_BYTES` (10 GiB), `VIDEO_PART_SIZE_BYTES` (64 MiB) and `VIDEO_WORKER_CONCURRENCY` (2).
 - MinIO images come from the `pgsty/*` fork: `minio/minio` is no longer available on Docker Hub.
-- Abandoned multipart uploads are not cleaned up automatically yet.
+- MinIO's defaults (`stale_uploads_expiry=24h`, checked every `6h`) remove abandoned multipart data. The application does not clean up: the draft row stays, and listing or completing it answers `VIDEO_UPLOAD_EXPIRED`. S3 needs an equivalent lifecycle rule in production.
 
 ### Testing videos
 
-- `test/videos.e2e-spec.ts` needs the real `video-worker` running and up to date.
+- `test/videos*.e2e-spec.ts` has one file per plan spec and shares `test/videos-e2e.helper.ts`. The files that reach `ready` or `failed` need the real `video-worker` running and up to date.
 - `src/test/video-fixture.ts` generates the test MP4 with FFmpeg; do not commit binary fixtures.
 - Integration specs publish to a dedicated queue so the running worker does not consume their jobs.
 - `Video` must be listed in every `ALL_ENTITIES`, because `Channel` declares the inverse relation.
