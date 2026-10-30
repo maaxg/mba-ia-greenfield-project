@@ -90,4 +90,26 @@ describe('ChannelsService (integration)', () => {
       expect(channels).toHaveLength(2);
     });
   });
+
+  describe('findByUserId', () => {
+    it('should return the channel of the user', async () => {
+      const user = await dataSource.getRepository(User).save({
+        email: 'owner@example.com',
+        password: 'hash',
+      });
+      const channel = await channelsService.createChannel(user.id, user.email);
+
+      const found = await channelsService.findByUserId(user.id);
+
+      expect(found?.id).toBe(channel.id);
+    });
+
+    it('should return null when the user has no channel', async () => {
+      const found = await channelsService.findByUserId(
+        '00000000-0000-4000-8000-000000000000',
+      );
+
+      expect(found).toBeNull();
+    });
+  });
 });
