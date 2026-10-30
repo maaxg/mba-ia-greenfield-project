@@ -3,7 +3,7 @@
 **Status:** completed
 **SIs:** 10/10 completed
 
-**Definition of Done:** `npm test` 246/246; `npm run test:e2e` 95/95, em três rodadas, 43 deles de vídeo; `npx tsc --noEmit` código 0; `npm run lint` com 0 erros e 64 avisos; `npm run build` gera `dist/main.js` e `dist/worker.js`. A última recriação do ambiente do zero (`docker compose down -v`, sem `node_modules`, `.env` copiado do `.env.example`) passou com 235/235 e 83/83; os testes adicionados depois rodaram no ambiente já existente.
+**Definition of Done:** `npm test` 246/246; `npm run test:e2e` 95/95, em três rodadas, 43 deles de vídeo; `npx tsc --noEmit` código 0; `npm run lint` com 0 erros e 64 avisos; `npm run build` gera `dist/main.js` e `dist/worker.js`. Tudo em ambiente recriado do zero (`docker compose down -v`, sem `node_modules`, `.env` copiado do `.env.example`).
 
 **Verificação manual a partir do host:** upload real de 10 GiB em 160 partes, direto no storage por `localhost:9000`, concluído em 263 s com a memória da API entre 590 e 690 MiB. O vídeo chegou a `ready`. Em leitura no mesmo arquivo, `Range` no byte 5.000.000.000 e no último KiB retornou `206`, o download veio como `attachment` e a thumbnail como `image/jpeg`. Com o Redis parado, a conclusão retornou `503 VIDEO_PROCESSING_UNAVAILABLE` e o vídeo ficou `failed` com `ENQUEUE_FAILED`. O arquivo de teste era um MP4 curto seguido de zeros, portanto a duração reflete o trecho real de 3 s. Um MP4 real de 30 s também foi reproduzido em navegador, com salto servido por `Range`.
 
