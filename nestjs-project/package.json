@@ -88,6 +88,8 @@
     ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node",
+    "maxWorkers": 1,
+    "forceExit": true,
     "setupFiles": [
       "dotenv/config"
     ]

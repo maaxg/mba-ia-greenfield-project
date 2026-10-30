@@ -14,6 +14,8 @@ const MANAGED_TABLES = [
   'verification_tokens',
 ];
 
+const MANAGED_ENUMS = ['verification_tokens_type_enum'];
+
 describe('Database migrations (integration)', () => {
   let dataSource: DataSource;
 
@@ -37,6 +39,11 @@ describe('Database migrations (integration)', () => {
       ),
       dataSource.query(`DROP TABLE IF EXISTS "migrations" CASCADE`),
     ]);
+    await Promise.all(
+      MANAGED_ENUMS.map((type) =>
+        dataSource.query(`DROP TYPE IF EXISTS "${type}"`),
+      ),
+    );
   });
 
   afterAll(async () => {
