@@ -21,7 +21,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.dev
-    command: ["sh", "-c", "test -d node_modules/bullmq || npm ci; npm run start:worker"]
+    command:
+      - sh
+      - -c
+      - until [ -x node_modules/.bin/ts-node ]; do echo "Waiting for npm install"; sleep 5; done; exec npm run start:worker
     restart: on-failure
     volumes:
       - .:/home/node/app

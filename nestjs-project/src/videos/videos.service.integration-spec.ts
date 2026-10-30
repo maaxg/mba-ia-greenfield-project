@@ -198,9 +198,7 @@ describe('VideosService (integration)', () => {
 
       const rejected = results.filter((r) => r.status === 'rejected');
       expect(rejected).toHaveLength(1);
-      expect((rejected[0] as PromiseRejectedResult).reason).toBeInstanceOf(
-        VideoUploadClosedException,
-      );
+      expect(rejected[0].reason).toBeInstanceOf(VideoUploadClosedException);
     });
   });
 

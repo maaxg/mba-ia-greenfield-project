@@ -40,7 +40,7 @@ Services:
 - `redis` — BullMQ backend, reachable only inside the Compose network (`maxmemory-policy noeviction`)
 - `minio` — S3-compatible storage, API on `9000`, console on `9001`, volume `minio-data`
 - `minio-init` — one-shot job that creates `S3_BUCKET`; it exits with code 0
-- `video-worker` — runs `npm run start:worker` and consumes the processing queue. It has no watch mode: **run `docker compose restart video-worker` after changing worker code**
+- `video-worker` — runs `npm run start:worker` and consumes the processing queue. It waits for `node_modules` on a fresh clone and has no watch mode: **run `docker compose restart video-worker` after changing worker code or reinstalling dependencies**
 
 All verification and teardown commands run on the **host machine**:
 
