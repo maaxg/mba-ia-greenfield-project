@@ -51,6 +51,27 @@ describe('videos-upload-complete.e2e-spec', () => {
     expect(body.error).toBe('VIDEO_ACCESS_DENIED');
   });
 
+  it('should require a token to complete', async () => {
+    const { slug } = await ctx.startUpload(ctx.fixture);
+
+    await ctx
+      .http()
+      .post(`/videos/${slug}/upload/complete`)
+      .send({ parts: [{ part_number: 1, etag: '"a"' }] })
+      .expect(401);
+  });
+
+  it('should reject an invalid token when completing', async () => {
+    const { slug } = await ctx.startUpload(ctx.fixture);
+
+    await ctx
+      .http()
+      .post(`/videos/${slug}/upload/complete`)
+      .auth('invalid-token', { type: 'bearer' })
+      .send({ parts: [{ part_number: 1, etag: '"a"' }] })
+      .expect(401);
+  });
+
   it('should refuse a second completion', async () => {
     const { slug } = await ctx.startUpload(ctx.fixture);
     const parts = await ctx.sendPart(slug, ctx.fixture);
@@ -85,6 +106,34 @@ describe('videos-upload-complete.e2e-spec', () => {
       .get(`/videos/${slug}/status`)
       .auth(ctx.token, { type: 'bearer' })
       .expect(404);
+  });
+
+  it('should require a token to cancel', async () => {
+    const { slug } = await ctx.startUpload(ctx.fixture);
+
+    await ctx.http().delete(`/videos/${slug}/upload`).expect(401);
+  });
+
+  it('should reject an invalid token when cancelling', async () => {
+    const { slug } = await ctx.startUpload(ctx.fixture);
+
+    await ctx
+      .http()
+      .delete(`/videos/${slug}/upload`)
+      .auth('invalid-token', { type: 'bearer' })
+      .expect(401);
+  });
+
+  it('should deny another user the cancellation', async () => {
+    const { slug } = await ctx.startUpload(ctx.fixture);
+
+    const { body } = await ctx
+      .http()
+      .delete(`/videos/${slug}/upload`)
+      .auth(ctx.otherToken, { type: 'bearer' })
+      .expect(403);
+
+    expect(body.error).toBe('VIDEO_ACCESS_DENIED');
   });
 
   it('should refuse to cancel a video in processing', async () => {

@@ -40,6 +40,15 @@ describe('videos.e2e-spec', () => {
     await ctx.http().post('/videos').send(validBody).expect(401);
   });
 
+  it('should reject an invalid token', async () => {
+    await ctx
+      .http()
+      .post('/videos')
+      .auth('invalid-token', { type: 'bearer' })
+      .send(validBody)
+      .expect(401);
+  });
+
   it('should reject a file above the limit', async () => {
     const { body } = await ctx
       .http()
