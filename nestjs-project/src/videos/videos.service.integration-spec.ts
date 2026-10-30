@@ -216,4 +216,28 @@ describe('VideosService (integration)', () => {
       );
     });
   });
+
+  describe('reading a ready video', () => {
+    it('should sign a stream URL that honors Range', async () => {
+      const { id, slug } = await service.initiateUpload(userId, validDto);
+      const parts = await uploadFile(slug, new Uint8Array(1024));
+      await service.completeUpload(userId, slug, parts);
+      await videos.update(id, { status: VideoStatus.READY });
+
+      const res = await fetch(await service.getStreamUrl(slug), {
+        headers: { Range: 'bytes=0-99' },
+      });
+
+      expect(res.status).toBe(206);
+      expect(res.headers.get('content-type')).toBe('video/mp4');
+    });
+
+    it('should not stream a video that is not ready', async () => {
+      const { slug } = await service.initiateUpload(userId, validDto);
+
+      await expect(service.getStreamUrl(slug)).rejects.toThrow(
+        VideoNotFoundException,
+      );
+    });
+  });
 });

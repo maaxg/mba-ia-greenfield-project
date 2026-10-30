@@ -25,8 +25,10 @@ import type { CompletedPart, UploadedPart } from '../storage/storage.types';
 import { CompleteUploadResponseDto } from './dto/complete-upload-response.dto';
 import { InitiateUploadDto } from './dto/initiate-upload.dto';
 import { InitiateUploadResponseDto } from './dto/initiate-upload-response.dto';
+import { PublicVideoResponseDto } from './dto/public-video-response.dto';
 import { SignUploadPartsResponseDto } from './dto/sign-upload-parts-response.dto';
-import { Video } from './entities/video.entity';
+import { VideoStatusResponseDto } from './dto/video-status-response.dto';
+import { Video, type VideoMetadata } from './entities/video.entity';
 import { generateSlug } from './slug.util';
 import { VideoQueueService } from './video-queue.service';
 import {
@@ -39,6 +41,7 @@ import {
 
 const SLUG_COLUMN = 'slug';
 const SAFE_EXTENSION = /^\.[a-z0-9]{1,10}$/;
+const UNSAFE_FILENAME_CHARACTERS = /[^\w. -]/g;
 
 @Injectable()
 export class VideosService {
@@ -177,6 +180,71 @@ export class VideosService {
       id: video.id,
       status: VideoStatus.DRAFT,
     });
+  }
+
+  async getPublicVideo(slug: string): Promise<PublicVideoResponseDto> {
+    const video = await this.getReadyVideo(slug);
+    return {
+      slug: video.slug,
+      title: video.title,
+      status: video.status,
+      duration_seconds: video.duration_seconds as number,
+      metadata: video.metadata as VideoMetadata,
+      size_bytes: video.size_bytes,
+      created_at: video.created_at,
+    };
+  }
+
+  async getVideoStatus(
+    userId: string,
+    slug: string,
+  ): Promise<VideoStatusResponseDto> {
+    const video = await this.getOwnedVideo(userId, slug);
+    return {
+      id: video.id,
+      slug: video.slug,
+      title: video.title,
+      status: video.status,
+      failure_reason: video.failure_reason,
+      duration_seconds: video.duration_seconds,
+      has_thumbnail: video.thumbnail_key !== null,
+      created_at: video.created_at,
+      updated_at: video.updated_at,
+    };
+  }
+
+  async getStreamUrl(slug: string): Promise<string> {
+    const video = await this.getReadyVideo(slug);
+    return this.storageService.presignGetObject(video.storage_key, {
+      contentType: video.content_type,
+    });
+  }
+
+  async getDownloadUrl(slug: string): Promise<string> {
+    const video = await this.getReadyVideo(slug);
+    return this.storageService.presignGetObject(video.storage_key, {
+      contentType: video.content_type,
+      downloadFilename: video.original_filename.replace(
+        UNSAFE_FILENAME_CHARACTERS,
+        '_',
+      ),
+    });
+  }
+
+  async getThumbnailUrl(slug: string): Promise<string> {
+    const video = await this.getReadyVideo(slug);
+    return this.storageService.presignGetObject(video.thumbnail_key as string);
+  }
+
+  private async getReadyVideo(slug: string): Promise<Video> {
+    const video = await this.videoRepository.findOneBy({
+      slug,
+      status: VideoStatus.READY,
+    });
+    if (!video) {
+      throw new VideoNotFoundException();
+    }
+    return video;
   }
 
   private async assertPartsMatchFile(

@@ -66,12 +66,14 @@ describe('VideosService', () => {
       update: jest.fn().mockResolvedValue({ affected: 1 }),
       delete: jest.fn(),
       existsBy: jest.fn().mockResolvedValue(false),
+      findOneBy: jest.fn(),
       createQueryBuilder: jest.fn(() => queryBuilder),
     };
     channels = { findByUserId: jest.fn().mockResolvedValue({ id: 'channel' }) };
     storage = {
       createMultipartUpload: jest.fn().mockResolvedValue('upload'),
       presignUploadPart: jest.fn().mockResolvedValue('http://signed'),
+      presignGetObject: jest.fn().mockResolvedValue('http://signed-read'),
       listParts: jest.fn().mockResolvedValue([]),
       completeMultipartUpload: jest.fn(),
       abortMultipartUpload: jest.fn(),
@@ -365,6 +367,81 @@ describe('VideosService', () => {
 
       await expect(service.cancelUpload(USER_ID, 'slug')).rejects.toThrow(
         VideoUploadClosedException,
+      );
+    });
+  });
+
+  describe('reading', () => {
+    const readyVideo = {
+      ...ownedVideo({ status: VideoStatus.READY }),
+      original_filename: 'my "clip"\r\n.mp4',
+      content_type: 'video/mp4',
+      thumbnail_key: 'videos/video-id/thumbnail.jpg',
+    };
+
+    it('should only look up ready videos', async () => {
+      repository.findOneBy.mockResolvedValue(null);
+
+      await expect(service.getPublicVideo('slug')).rejects.toThrow(
+        VideoNotFoundException,
+      );
+      expect(repository.findOneBy).toHaveBeenCalledWith({
+        slug: 'slug',
+        status: VideoStatus.READY,
+      });
+    });
+
+    it('should not expose storage keys publicly', async () => {
+      repository.findOneBy.mockResolvedValue(readyVideo);
+
+      const result = await service.getPublicVideo('slug');
+
+      expect(result).not.toHaveProperty('storage_key');
+      expect(result).not.toHaveProperty('thumbnail_key');
+    });
+
+    it('should stream with the original content type', async () => {
+      repository.findOneBy.mockResolvedValue(readyVideo);
+
+      await expect(service.getStreamUrl('slug')).resolves.toBe(
+        'http://signed-read',
+      );
+      expect(storage.presignGetObject).toHaveBeenCalledWith(
+        readyVideo.storage_key,
+        { contentType: 'video/mp4' },
+      );
+    });
+
+    it('should sanitize the download file name', async () => {
+      repository.findOneBy.mockResolvedValue(readyVideo);
+
+      await service.getDownloadUrl('slug');
+
+      expect(storage.presignGetObject).toHaveBeenCalledWith(
+        readyVideo.storage_key,
+        { contentType: 'video/mp4', downloadFilename: 'my _clip___.mp4' },
+      );
+    });
+
+    it('should report the status to the owner in any state', async () => {
+      queryBuilder.getOne.mockResolvedValue(
+        ownedVideo({
+          status: VideoStatus.FAILED,
+          failure_reason: 'INVALID_VIDEO_FILE',
+          thumbnail_key: null,
+        }),
+      );
+
+      const result = await service.getVideoStatus(USER_ID, 'slug');
+
+      expect(result.status).toBe(VideoStatus.FAILED);
+      expect(result.failure_reason).toBe('INVALID_VIDEO_FILE');
+      expect(result.has_thumbnail).toBe(false);
+    });
+
+    it('should hide the status from other users', async () => {
+      await expect(service.getVideoStatus('other', 'slug')).rejects.toThrow(
+        VideoAccessDeniedException,
       );
     });
   });

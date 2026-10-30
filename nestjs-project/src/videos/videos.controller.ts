@@ -6,6 +6,7 @@ import {
   HttpCode,
   Param,
   Post,
+  Redirect,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -17,14 +18,17 @@ import {
 import { SkipThrottle } from '@nestjs/throttler';
 import type { JwtPayload } from '../auth/auth.types';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { Public } from '../auth/decorators/public.decorator';
 import { ApiErrorEnvelope } from '../common/openapi/api-error-envelope.dto';
 import { CompleteUploadDto } from './dto/complete-upload.dto';
 import { CompleteUploadResponseDto } from './dto/complete-upload-response.dto';
 import { InitiateUploadDto } from './dto/initiate-upload.dto';
 import { InitiateUploadResponseDto } from './dto/initiate-upload-response.dto';
+import { PublicVideoResponseDto } from './dto/public-video-response.dto';
 import { ListUploadedPartsResponseDto } from './dto/list-uploaded-parts-response.dto';
 import { SignUploadPartsDto } from './dto/sign-upload-parts.dto';
 import { SignUploadPartsResponseDto } from './dto/sign-upload-parts-response.dto';
+import { VideoStatusResponseDto } from './dto/video-status-response.dto';
 import { VideosService } from './videos.service';
 
 const errorResponse = (status: number, description: string) =>
@@ -163,5 +167,84 @@ export class VideosController {
     @Param('slug') slug: string,
   ): Promise<void> {
     return this.videosService.cancelUpload(user.sub, slug);
+  }
+
+  @Get(':slug/status')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Get the status of an owned video',
+    description:
+      'Returns the processing state of the video in any status, including the failure reason.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Current status of the video',
+    type: VideoStatusResponseDto,
+  })
+  @errorResponse(401, 'Missing or invalid access token')
+  @errorResponse(403, 'The user does not own this video')
+  @errorResponse(404, 'Video not found')
+  getVideoStatus(
+    @CurrentUser() user: JwtPayload,
+    @Param('slug') slug: string,
+  ): Promise<VideoStatusResponseDto> {
+    return this.videosService.getVideoStatus(user.sub, slug);
+  }
+
+  @Public()
+  @Get(':slug/stream')
+  @Redirect()
+  @ApiOperation({
+    summary: 'Stream a video',
+    description:
+      'Redirects to a signed storage URL that honors Range requests with 206 Partial Content.',
+  })
+  @ApiResponse({ status: 302, description: 'Redirect to the signed URL' })
+  @errorResponse(404, 'Video not found or not ready')
+  async streamVideo(@Param('slug') slug: string): Promise<{ url: string }> {
+    return { url: await this.videosService.getStreamUrl(slug) };
+  }
+
+  @Public()
+  @Get(':slug/download')
+  @Redirect()
+  @ApiOperation({
+    summary: 'Download a video',
+    description:
+      'Redirects to a signed storage URL that serves the file as an attachment.',
+  })
+  @ApiResponse({ status: 302, description: 'Redirect to the signed URL' })
+  @errorResponse(404, 'Video not found or not ready')
+  async downloadVideo(@Param('slug') slug: string): Promise<{ url: string }> {
+    return { url: await this.videosService.getDownloadUrl(slug) };
+  }
+
+  @Public()
+  @Get(':slug/thumbnail')
+  @Redirect()
+  @ApiOperation({
+    summary: 'Get a video thumbnail',
+    description: 'Redirects to a signed storage URL of the generated JPEG.',
+  })
+  @ApiResponse({ status: 302, description: 'Redirect to the signed URL' })
+  @errorResponse(404, 'Video not found or not ready')
+  async getThumbnail(@Param('slug') slug: string): Promise<{ url: string }> {
+    return { url: await this.videosService.getThumbnailUrl(slug) };
+  }
+
+  @Public()
+  @Get(':slug')
+  @ApiOperation({
+    summary: 'Get a video by its unique URL',
+    description: 'Returns a processed video. Anonymous access is allowed.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Processed video',
+    type: PublicVideoResponseDto,
+  })
+  @errorResponse(404, 'Video not found or not ready')
+  getPublicVideo(@Param('slug') slug: string): Promise<PublicVideoResponseDto> {
+    return this.videosService.getPublicVideo(slug);
   }
 }
