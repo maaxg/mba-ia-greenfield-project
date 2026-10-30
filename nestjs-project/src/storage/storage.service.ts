@@ -197,6 +197,8 @@ export class StorageService {
   }
 
   private translateUploadError(err: unknown): unknown {
-    return err instanceof NoSuchUpload ? new VideoUploadExpiredException() : err;
+    return err instanceof NoSuchUpload
+      ? new VideoUploadExpiredException()
+      : err;
   }
 }

@@ -19,7 +19,7 @@ describe('StorageService (integration)', () => {
     body: Buffer,
   ) => {
     const url = await service.presignUploadPart(key, uploadId, partNumber);
-    const res = await fetch(url, { method: 'PUT', body });
+    const res = await fetch(url, { method: 'PUT', body: new Uint8Array(body) });
     expect(res.status).toBe(200);
     return res.headers.get('etag') as string;
   };
@@ -34,7 +34,9 @@ describe('StorageService (integration)', () => {
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
-      imports: [ConfigModule.forRoot({ isGlobal: true, load: [storageConfig] })],
+      imports: [
+        ConfigModule.forRoot({ isGlobal: true, load: [storageConfig] }),
+      ],
       providers: [StorageService],
     }).compile();
     service = moduleRef.get(StorageService);
