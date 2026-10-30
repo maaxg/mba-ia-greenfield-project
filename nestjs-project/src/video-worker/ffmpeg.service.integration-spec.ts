@@ -60,4 +60,14 @@ describe('FfmpegService (integration)', () => {
     expect(error).toBeInstanceOf(Error);
     expect(error).not.toBeInstanceOf(InvalidVideoFileError);
   });
+
+  it('should keep the source out of error messages', async () => {
+    const source = `${garbagePath}?X-Amz-Signature=secret`;
+
+    const error = (await service
+      .probe(source)
+      .catch((err: unknown) => err)) as Error;
+
+    expect(error.message).not.toContain('X-Amz-Signature');
+  });
 });

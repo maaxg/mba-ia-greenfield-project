@@ -3,7 +3,7 @@ kind: phase
 name: phase-03-videos
 sources_mtime:
   docs/project-plan.md: "2026-10-30T09:29:31-03:00"
-  docs/decisions/technical-decisions-phase-03-videos.md: "2026-10-30T10:15:43-03:00"
+  docs/decisions/technical-decisions-phase-03-videos.md: "2026-10-30T10:18:07-03:00"
   docs/decisions/technical-decisions-phase-01-configuracao-base.md: "2026-10-30T09:29:57-03:00"
   docs/decisions/technical-decisions-phase-02-auth.md: "2026-10-30T09:29:57-03:00"
   docs/phases/phase-01-configuracao-base/context.md: "2026-10-30T09:29:57-03:00"
@@ -48,7 +48,7 @@ sources_mtime:
 
 | Ref | Source | Scope | Topic | Status | Decision | Libraries |
 |-----|--------|-------|-------|--------|----------|-----------|
-| phase-03-videos/TD-01 | technical-decisions-phase-03-videos.md | Backend | Tecnologia da fila de processamento | decided | A (BullMQ + Redis) | `bullmq@^6.5.1`, `@nestjs/bullmq@^11.0.5` |
+| phase-03-videos/TD-01 | technical-decisions-phase-03-videos.md | Backend | Tecnologia da fila de processamento | decided | A (BullMQ + Redis) | `bullmq@^6.5.1`, `@nestjs/bullmq@^11.0.5`, `ioredis@^5` |
 | phase-03-videos/TD-02 | technical-decisions-phase-03-videos.md | Cross-layer | Estratégia de upload de arquivos de até 10GB | decided | A (Multipart S3 direto ao storage com URLs pré-assinadas) | `@aws-sdk/client-s3@^3.1160.0`, `@aws-sdk/s3-request-presigner@^3.1160.0` |
 | phase-03-videos/TD-03 | technical-decisions-phase-03-videos.md | Backend | Organização do object storage | decided | A (Bucket único privado com prefixo por vídeo) | — |
 | phase-03-videos/TD-04 | technical-decisions-phase-03-videos.md | Repo-wide | Como o worker de vídeo roda | decided | A (Container separado, mesmo código-fonte) | — |
@@ -85,7 +85,7 @@ _Source files:_
 
 **Note:** Redis roda com `maxmemory-policy noeviction` e sem porta publicada no host: só a rede Compose o acessa.
 
-**Libraries:** `bullmq@^6.5.1`, `@nestjs/bullmq@^11.0.5`
+**Libraries:** `bullmq@^6.5.1`, `@nestjs/bullmq@^11.0.5`, `ioredis@^5`
 
 ### phase-03-videos/TD-02
 

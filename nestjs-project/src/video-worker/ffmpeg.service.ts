@@ -6,6 +6,7 @@ import { InvalidVideoFileError } from './video-worker.errors';
 
 const COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
 const INVALID_INPUT_MESSAGE = 'Invalid data found';
+const REDACTED_INPUT = '<video source>';
 
 export interface VideoProbe {
   durationSeconds: number;
@@ -38,7 +39,7 @@ function parseOptionalNumber(value: string | undefined): number | null {
 @Injectable()
 export class FfmpegService {
   async probe(input: string): Promise<VideoProbe> {
-    const stdout = await this.run('ffprobe', [
+    const stdout = await this.run('ffprobe', input, [
       '-v',
       'error',
       '-print_format',
@@ -73,7 +74,7 @@ export class FfmpegService {
   }
 
   async extractFrame(input: string, atSeconds: number): Promise<Buffer> {
-    const frame = await this.run('ffmpeg', [
+    const frame = await this.run('ffmpeg', input, [
       '-v',
       'error',
       '-ss',
@@ -99,7 +100,7 @@ export class FfmpegService {
     return frame;
   }
 
-  private run(command: string, args: string[]): Promise<Buffer> {
+  private run(command: string, input: string, args: string[]): Promise<Buffer> {
     return new Promise((resolve, reject) => {
       const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] });
       const stdout: Buffer[] = [];
@@ -121,7 +122,11 @@ export class FfmpegService {
           resolve(Buffer.concat(stdout));
           return;
         }
-        const message = Buffer.concat(stderr).toString().trim();
+        // FFmpeg echoes its input, and a signed URL must not reach the logs.
+        const message = Buffer.concat(stderr)
+          .toString()
+          .replaceAll(input, REDACTED_INPUT)
+          .trim();
         reject(
           message.includes(INVALID_INPUT_MESSAGE)
             ? new InvalidVideoFileError(message)

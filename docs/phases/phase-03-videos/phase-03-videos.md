@@ -3,9 +3,9 @@ kind: phase
 name: phase-03-videos
 test_specs_aware: true
 sources_mtime:
-  docs/phases/phase-03-videos/context.md: "2026-10-30T09:55:52-03:00"
-  docs/phases/phase-03-videos/library-refs.md: "2026-10-30T09:55:52-03:00"
-  docs/decisions/technical-decisions-phase-03-videos.md: "2026-10-30T09:55:52-03:00"
+  docs/phases/phase-03-videos/context.md: "2026-10-30T10:33:14-03:00"
+  docs/phases/phase-03-videos/library-refs.md: "2026-10-30T10:33:14-03:00"
+  docs/decisions/technical-decisions-phase-03-videos.md: "2026-10-30T10:18:07-03:00"
 ---
 
 # Phase 03 — Upload e Processamento de Vídeos
@@ -190,7 +190,7 @@ Entregar upload de vídeos de até 10GB direto ao object storage, com pré-cadas
 
 **Technical actions:**
 
-1. Criar `src/queue/queue.module.ts` com `BullModule.forRootAsync` e `registerQueue`, e `src/videos/video-queue.service.ts` publicando o job de `### Events/Messages` (per `phase-03-videos/TD-01`)
+1. Criar `src/queue/queue.module.ts` com `BullModule.forRootAsync`, registrar a fila em `VideosModule` com `enableOfflineQueue: false` e criar `src/videos/video-queue.service.ts` publicando o job de `### Events/Messages` (per `phase-03-videos/TD-01`)
 2. Implementar `completeUpload`: confere partes e tamanho, faz a transição `draft → processing`, completa no storage e reverte para `draft` se ele falhar (per `phase-03-videos/TD-08`)
 3. Publicar o job e, se a publicação falhar, ir a `failed` com `ENQUEUE_FAILED` (per `phase-03-videos/TD-08`)
 4. Implementar `cancelUpload`: aborta o multipart e remove o rascunho (per `phase-03-videos/TD-02`)
@@ -534,20 +534,20 @@ SI-03.1 (root)
 
 ## Deliverables
 
-- [ ] SI-03.1 — Infraestrutura: storage, fila, worker e configuração
-- [ ] SI-03.2 — Serviço de storage
-- [ ] SI-03.3 — Entidade Video e migration
-- [ ] SI-03.4 — Pré-cadastro e início do upload
-- [ ] SI-03.5 — Assinatura e retomada de partes
-- [ ] SI-03.6 — Conclusão do upload e enfileiramento
-- [ ] SI-03.7 — Worker de vídeo
-- [ ] SI-03.8 — Leitura pública, streaming e download
-- [ ] SI-03.9 — Fluxo completo (cross-layer)
-- [ ] SI-03.10 — Documentação de IA e diagrama
+- [x] SI-03.1 — Infraestrutura: storage, fila, worker e configuração
+- [x] SI-03.2 — Serviço de storage
+- [x] SI-03.3 — Entidade Video e migration
+- [x] SI-03.4 — Pré-cadastro e início do upload
+- [x] SI-03.5 — Assinatura e retomada de partes
+- [x] SI-03.6 — Conclusão do upload e enfileiramento
+- [x] SI-03.7 — Worker de vídeo
+- [x] SI-03.8 — Leitura pública, streaming e download
+- [x] SI-03.9 — Fluxo completo (cross-layer)
+- [x] SI-03.10 — Documentação de IA e diagrama
 
 **Full test suites:**
 
-- [ ] Backend tests pass (`cd nestjs-project && docker compose exec nestjs-api npm test`)
-- [ ] E2E tests pass (`cd nestjs-project && docker compose exec nestjs-api npm run test:e2e`)
-- [ ] Type/compilation checks pass (`cd nestjs-project && docker compose exec nestjs-api npx tsc --noEmit`)
-- [ ] Lint passes (`cd nestjs-project && docker compose exec nestjs-api npm run lint`)
+- [x] Backend tests pass (`cd nestjs-project && docker compose exec nestjs-api npm test`)
+- [x] E2E tests pass (`cd nestjs-project && docker compose exec nestjs-api npm run test:e2e`)
+- [x] Type/compilation checks pass (`cd nestjs-project && docker compose exec nestjs-api npx tsc --noEmit`)
+- [x] Lint passes (`cd nestjs-project && docker compose exec nestjs-api npm run lint`)
