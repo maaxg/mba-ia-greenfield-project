@@ -323,10 +323,13 @@ describe('VideosService', () => {
       await expect(
         service.completeUpload(USER_ID, 'slug', parts),
       ).rejects.toThrow(VideoProcessingUnavailableException);
-      expect(repository.update).toHaveBeenLastCalledWith('video-id', {
-        status: VideoStatus.FAILED,
-        failure_reason: VIDEO_FAILURE_REASON.ENQUEUE_FAILED,
-      });
+      expect(repository.update).toHaveBeenLastCalledWith(
+        { id: 'video-id', status: VideoStatus.PROCESSING },
+        {
+          status: VideoStatus.FAILED,
+          failure_reason: VIDEO_FAILURE_REASON.ENQUEUE_FAILED,
+        },
+      );
     });
   });
 

@@ -238,6 +238,9 @@ _Subprojects in scope:_
 
 **Decision:** A (@nestjs/throttler)
 
+**Revisions:**
+- 2026-10-30 — O `ThrottlerGuard` é global via `APP_GUARD` (10 req/min), não restrito ao `AuthModule`, e as isenções usam `@SkipThrottle()`. Rationale: registrar a Option A como foi implementada; o provider declarado em `auth.module.ts` vale para toda a aplicação, e a Fase 03 depende disso em `phase-03-videos/TD-07`.
+
 ---
 
 ## TD-09: Refresh Token Format

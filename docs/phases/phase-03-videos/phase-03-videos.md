@@ -3,9 +3,16 @@ kind: phase
 name: phase-03-videos
 test_specs_aware: true
 sources_mtime:
-  docs/phases/phase-03-videos/context.md: "2026-10-30T10:33:14-03:00"
-  docs/phases/phase-03-videos/library-refs.md: "2026-10-30T10:33:14-03:00"
-  docs/decisions/technical-decisions-phase-03-videos.md: "2026-10-30T10:18:07-03:00"
+  docs/phases/phase-03-videos/context.md: "2026-10-30T14:20:47.617676202-03:00"
+  docs/phases/phase-03-videos/library-refs.md: "2026-10-30T14:20:47.618111875-03:00"
+  docs/project-plan.md: "2026-10-30T09:29:31.553675923-03:00"
+  docs/decisions/technical-decisions-phase-03-videos.md: "2026-10-30T14:19:40.717837827-03:00"
+  docs/decisions/technical-decisions-openapi-docs-nestjs.md: "2026-10-30T09:29:57.119077017-03:00"
+  docs/decisions/technical-decisions-next-frontend-openapi-typing.md: "2026-10-30T09:29:57.118680811-03:00"
+  docs/phases/phase-01-configuracao-base/context.md: "2026-10-30T09:29:57.123070325-03:00"
+  docs/phases/phase-02-auth/context.md: "2026-10-30T09:29:57.127243881-03:00"
+  docs/phases/phase-02-auth-frontend/context.md: "2026-10-30T09:29:57.124166067-03:00"
+  .claude/skills/testing-guide-nestjs-project/SKILL.md: "2026-10-30T09:29:31.289585106-03:00"
 ---
 
 # Phase 03 — Upload e Processamento de Vídeos
@@ -26,8 +33,8 @@ Entregar upload de vídeos de até 10GB direto ao object storage, com pré-cadas
 
 1. Instalar `bullmq@^6.5.1`, `ioredis@^5`, `@nestjs/bullmq@^11.0.5`, `@aws-sdk/client-s3@^3.1160.0` e `@aws-sdk/s3-request-presigner@^3.1160.0` (per `phase-03-videos/TD-01`, `phase-03-videos/TD-02`)
 2. Adicionar `ffmpeg` ao `Dockerfile.dev`, compartilhado por API e worker (per `phase-03-videos/TD-04`)
-3. Adicionar ao `compose.yaml` os serviços `redis` (`noeviction`, sem porta no host), `minio` (`pgsty/minio`, volume nomeado, healthcheck), `minio-init` (cria `S3_BUCKET`) e `video-worker` (`npm run start:worker`) (per `phase-03-videos/TD-01`, `phase-03-videos/TD-03`, `phase-03-videos/TD-04`)
-4. Criar `src/config/storage.config.ts`, `src/config/queue.config.ts` e `src/config/video.config.ts`; estender `env.validation.ts`, `.env.example` e `AppModule` (per `phase-03-videos/TD-09`)
+3. Adicionar ao `compose.yaml` os serviços `redis` (`noeviction`, sem porta no host), `minio` (`pgsty/minio`, volume nomeado, healthcheck, sem CORS próprio), `minio-init` (cria `S3_BUCKET`) e `video-worker`, com o script `start:worker` e um `src/worker.ts` provisório que mantém o processo vivo até SI-03.7 (per `phase-03-videos/TD-01`, `phase-03-videos/TD-03`, `phase-03-videos/TD-04`, `phase-03-videos/TD-12`, `phase-03-videos/TD-14`)
+4. Criar `src/config/storage.config.ts`, `src/config/queue.config.ts` e `src/config/video.config.ts`; estender `env.validation.ts`, `.env.example` e `AppModule` com as chaves de `phase-03-videos/TD-09`
 5. Criar `src/test/setup-env.ts` nas duas configurações do Jest, assinando URLs com `S3_ENDPOINT` nos testes (per `phase-03-videos/TD-09`)
 
 **Tests:**
@@ -54,9 +61,9 @@ Entregar upload de vídeos de até 10GB direto ao object storage, com pré-cadas
 **Technical actions:**
 
 1. Criar `src/storage/storage.service.ts` com dois `S3Client`: interno (`S3_ENDPOINT`) e de assinatura (`S3_PUBLIC_ENDPOINT`), ambos com `forcePathStyle: true` (per `phase-03-videos/TD-09`)
-2. Implementar `createMultipartUpload`, `presignUploadPart`, `listParts`, `completeMultipartUpload` e `abortMultipartUpload` (per `phase-03-videos/TD-02`)
-3. Implementar `putObject`, `presignGetObject` para o cliente e `presignInternalGetObject` para o worker (per `phase-03-videos/TD-05`, `phase-03-videos/TD-07`)
-4. Converter `NoSuchUpload` do S3 em `VideoUploadExpiredException` (per `phase-03-videos/TD-02`)
+2. Implementar `createMultipartUpload`, `presignUploadPart` (validade de 1h), `listParts`, `completeMultipartUpload` e `abortMultipartUpload` (per `phase-03-videos/TD-02`, `phase-03-videos/TD-13`)
+3. Implementar `putObject`, `presignGetObject` para o cliente e `presignInternalGetObject` para o worker, com validade de 4h (per `phase-03-videos/TD-05`, `phase-03-videos/TD-07`, `phase-03-videos/TD-13`)
+4. Adicionar as exceções de `### Error Catalog` a `domain.exception.ts`; converter `NoSuchUpload` em `VideoUploadExpiredException`, e `EntityTooSmall`, `InvalidPart` e `InvalidPartOrder` em `VideoUploadIncompleteException` (per `phase-03-videos/TD-02`)
 5. Criar e exportar `StorageModule`
 
 **Tests:**
@@ -118,17 +125,17 @@ Entregar upload de vídeos de até 10GB direto ao object storage, com pré-cadas
 
 **Technical actions:**
 
-1. Adicionar `findByUserId` a `ChannelsService` e `ChannelNotFoundException` (resolve DG-1)
+1. Adicionar `findByUserId` a `ChannelsService` (resolve DG-1)
 2. Criar `src/videos/slug.util.ts` com base62 de 11 caracteres via `crypto.randomInt` (per `phase-03-videos/TD-06`)
-3. Adicionar as exceções de vídeo a `domain.exception.ts` conforme `### Error Catalog`
-4. Criar `VideosService.initiateUpload`: valida tamanho e tipo, cria `draft`, retenta colisão de slug e compensa removendo o rascunho se o storage falhar (per `phase-03-videos/TD-02`, `phase-03-videos/TD-08`)
-5. Criar `VideosController` com `POST /videos`, `InitiateUploadDto` e respostas OpenAPI; `@SkipThrottle()` na classe, mantendo o limite neste método (per `phase-03-videos/TD-07`)
+3. Criar `VideosService.initiateUpload`: valida tamanho e tipo, cria `draft`, retenta colisão de slug e compensa removendo o rascunho se o storage falhar (per `phase-03-videos/TD-02`, `phase-03-videos/TD-08`)
+4. Criar `VideosController` com `POST /videos`, `InitiateUploadDto` e respostas OpenAPI; `@SkipThrottle()` na classe, mantendo o limite neste método (per `phase-03-videos/TD-07`)
+5. Criar `src/test/video-fixture.ts`, gerando MP4 com `ffmpeg -f lavfi`, e `test/videos-e2e.helper.ts`, compartilhado pelos arquivos e2e de vídeo (per `phase-03-videos/TD-10`)
 
 **Tests:**
 
 | Artifact | Layer | Test file |
 |----------|-------|-----------|
-| `generateSlug` | Unit: tamanho, alfabeto, distribuição | `src/videos/slug.util.spec.ts` |
+| `generateSlug` | Unit: tamanho, alfabeto, unicidade | `src/videos/slug.util.spec.ts` |
 | `VideosService` | Unit: ramos de validação e compensação | `src/videos/videos.service.spec.ts` |
 | `VideosService` | Integration: rascunho real no banco e no MinIO | `src/videos/videos.service.integration-spec.ts` |
 | `ChannelsService` | Integration: `findByUserId` | `src/channels/channels.service.integration-spec.ts` |
@@ -143,13 +150,15 @@ Entregar upload de vídeos de até 10GB direto ao object storage, com pré-cadas
 - `POST /videos` com `content_type: "text/plain"` retorna `415` com `UNSUPPORTED_VIDEO_TYPE`
 - `POST /videos` com corpo inválido retorna `400` com `VALIDATION_ERROR`
 - Se o storage falhar ao abrir o multipart, nenhuma linha fica em `videos`
+- `POST /videos` com `size_bytes` de 10 GiB retorna `201` com `part_count: 160`
+- Duas chamadas a `POST /videos` retornam `slug`s diferentes
 
 ---
 
 ### SI-03.5 — Assinatura e retomada de partes
 
 **Route:** POST /videos/:slug/upload/parts
-**Test Specs:** see `nestjs-project/specs/videos.plan.md`
+**Test Specs:** see `nestjs-project/specs/videos-upload-parts.plan.md`
 **Authorization:** Owner
 
 **Description:** Entrega URLs de partes e informa o que já foi enviado, viabilizando a retomada.
@@ -157,7 +166,7 @@ Entregar upload de vídeos de até 10GB direto ao object storage, com pré-cadas
 **Technical actions:**
 
 1. Implementar `VideosService.getOwnedVideo`, verificando o dono pelo canal do usuário (per `### Authorization Matrix`)
-2. Implementar `signUploadParts`, recusando parte fora de `1..part_count` e vídeo fora de `draft` (per `phase-03-videos/TD-02`)
+2. Implementar `signUploadParts`, recusando parte acima de `part_count` e vídeo fora de `draft` (per `phase-03-videos/TD-02`, `phase-03-videos/TD-13`)
 3. Implementar `listUploadedParts` (per `phase-03-videos/TD-02`)
 4. Adicionar `POST` e `GET /videos/:slug/upload/parts` com `SignUploadPartsDto` e OpenAPI
 
@@ -172,18 +181,20 @@ Entregar upload de vídeos de até 10GB direto ao object storage, com pré-cadas
 
 **Acceptance criteria:**
 
-- `POST /videos/:slug/upload/parts` com `part_numbers: [1, 2]` retorna `200` com duas URLs
+- `POST /videos/:slug/upload/parts` com `part_numbers: [1]` retorna `200` com uma URL e `expires_in: 3600`
 - `POST /videos/:slug/upload/parts` com `part_numbers: [999]` retorna `400` com `VIDEO_PART_OUT_OF_RANGE`
 - `POST /videos/:slug/upload/parts` de outro usuário retorna `403` com `VIDEO_ACCESS_DENIED`
 - `GET /videos/:slug/upload/parts` lista só as partes já enviadas, com `etag` e `size_bytes`
 - Mais de 10 requisições de assinatura por minuto não retornam `429`
+- `POST /videos/:slug/upload/parts` de vídeo inexistente retorna `404` com `VIDEO_NOT_FOUND`
+- `POST /videos/:slug/upload/parts` com `part_numbers: []` retorna `400` com `VALIDATION_ERROR`
 
 ---
 
 ### SI-03.6 — Conclusão do upload e enfileiramento
 
 **Route:** POST /videos/:slug/upload/complete
-**Test Specs:** see `nestjs-project/specs/videos.plan.md`
+**Test Specs:** see `nestjs-project/specs/videos-upload-complete.plan.md`
 **Authorization:** Owner
 
 **Description:** Fecha o multipart, muda o status de forma atômica e publica o job; também cancela uploads.
@@ -192,8 +203,8 @@ Entregar upload de vídeos de até 10GB direto ao object storage, com pré-cadas
 
 1. Criar `src/queue/queue.module.ts` com `BullModule.forRootAsync`, registrar a fila em `VideosModule` com `enableOfflineQueue: false` e criar `src/videos/video-queue.service.ts` publicando o job de `### Events/Messages` (per `phase-03-videos/TD-01`)
 2. Implementar `completeUpload`: confere partes e tamanho, faz a transição `draft → processing`, completa no storage e reverte para `draft` se ele falhar (per `phase-03-videos/TD-08`)
-3. Publicar o job e, se a publicação falhar, ir a `failed` com `ENQUEUE_FAILED` (per `phase-03-videos/TD-08`)
-4. Implementar `cancelUpload`: aborta o multipart e remove o rascunho (per `phase-03-videos/TD-02`)
+3. Publicar o job e, se a publicação falhar, ir de `processing` a `failed` com `ENQUEUE_FAILED` (per `phase-03-videos/TD-08`)
+4. Implementar `cancelUpload`: aborta o multipart, tolera upload já expirado no storage e remove o rascunho (per `phase-03-videos/TD-02`, `phase-03-videos/TD-11`)
 5. Adicionar `POST /videos/:slug/upload/complete` e `DELETE /videos/:slug/upload` com `CompleteUploadDto` e OpenAPI
 
 **Tests:**
@@ -203,6 +214,7 @@ Entregar upload de vídeos de até 10GB direto ao object storage, com pré-cadas
 | `VideosService` | Unit: partes divergentes, reversão, `ENQUEUE_FAILED` | `src/videos/videos.service.spec.ts` |
 | `VideosService` | Integration: corrida de conclusão, Redis e MinIO reais | `src/videos/videos.service.integration-spec.ts` |
 | `QueueModule` | Unit: compilation test | `src/queue/queue.module.spec.ts` |
+| `VideosModule` | Unit: compilation test | `src/videos/videos.module.spec.ts` |
 
 **Dependencies:** SI-03.5
 
@@ -214,6 +226,10 @@ Entregar upload de vídeos de até 10GB direto ao object storage, com pré-cadas
 - Duas conclusões simultâneas resultam em um `202` e um `409` com `VIDEO_UPLOAD_CLOSED`
 - `DELETE /videos/:slug/upload` retorna `204` e o vídeo deixa de existir
 - `DELETE /videos/:slug/upload` de vídeo em `processing` retorna `409` com `VIDEO_UPLOAD_CLOSED`
+- `POST /videos/:slug/upload/complete` com corpo inválido retorna `400` com `VALIDATION_ERROR`
+- `POST /videos/:slug/upload/complete` de outro usuário retorna `403` com `VIDEO_ACCESS_DENIED`
+- Uma segunda `POST /videos/:slug/upload/complete` retorna `409` com `VIDEO_UPLOAD_CLOSED`
+- `DELETE /videos/:slug/upload` de rascunho cujo multipart expirou retorna `204` e remove o rascunho
 
 ---
 
@@ -227,7 +243,7 @@ Entregar upload de vídeos de até 10GB direto ao object storage, com pré-cadas
 2. Criar `src/video-worker/video-processing.service.ts`: ignora vídeo fora de `processing`, grava metadados e thumbnail, e transiciona para `ready` (per `phase-03-videos/TD-05`, `phase-03-videos/TD-08`)
 3. Criar `src/video-worker/video.processor.ts`: traduz arquivo inválido em `UnrecoverableError` e marca `failed` ao esgotar tentativas (per `phase-03-videos/TD-08`)
 4. Extrair `src/database/database.module.ts` de `AppModule` para reuso no worker (per `phase-03-videos/TD-04`)
-5. Criar `src/video-worker/video-worker.module.ts` e `src/worker.ts` com `NestFactory.createApplicationContext`, mais o script `start:worker` (per `phase-03-videos/TD-04`)
+5. Criar `src/video-worker/video-worker.module.ts` e substituir o `src/worker.ts` provisório por `NestFactory.createApplicationContext` (per `phase-03-videos/TD-04`)
 
 **Tests:**
 
@@ -253,8 +269,8 @@ Entregar upload de vídeos de até 10GB direto ao object storage, com pré-cadas
 ### SI-03.8 — Leitura pública, streaming e download
 
 **Route:** GET /videos/:slug/stream
-**Test Specs:** see `nestjs-project/specs/videos.plan.md`
-**Authorization:** Mixed
+**Test Specs:** see `nestjs-project/specs/videos-stream.plan.md`
+**Authorization:** Anonymous
 
 **Description:** Expõe o vídeo pronto na URL única e redireciona o consumo de bytes ao storage.
 
@@ -262,7 +278,7 @@ Entregar upload de vídeos de até 10GB direto ao object storage, com pré-cadas
 
 1. Implementar `getPublicVideo`, que só retorna vídeos `ready`, e `getVideoStatus` para o dono (per `phase-03-videos/TD-07`, `phase-03-videos/TD-08`)
 2. Implementar `getStreamUrl`, `getDownloadUrl` com `Content-Disposition: attachment` e `getThumbnailUrl` (per `phase-03-videos/TD-07`)
-3. Adicionar `GET /videos/:slug`, `/stream`, `/download` e `/thumbnail` com `@Public()`, e `GET /videos/:slug/status` autenticado
+3. Adicionar `GET /videos/:slug`, `/stream`, `/download` e `/thumbnail` com `@Public()`, e `GET /videos/:slug/status` restrito ao dono (per `### Authorization Matrix`)
 4. Criar os DTOs de resposta com `@ApiProperty`
 
 **Tests:**
@@ -272,28 +288,31 @@ Entregar upload de vídeos de até 10GB direto ao object storage, com pré-cadas
 | `VideosService` | Unit: visibilidade por status | `src/videos/videos.service.spec.ts` |
 | `VideosService` | Integration: URLs assinadas válidas | `src/videos/videos.service.integration-spec.ts` |
 
-**Dependencies:** SI-03.6
+**Dependencies:** SI-03.6, SI-03.7
 
 **Acceptance criteria:**
 
 - `GET /videos/:slug` anônimo de vídeo `ready` retorna `200` sem expor chaves de storage
-- `GET /videos/:slug` de vídeo fora de `ready` retorna `404` com `VIDEO_NOT_FOUND`
+- `GET /videos/:slug`, `/stream`, `/download` e `/thumbnail` de vídeo fora de `ready` retornam `404`, com `VIDEO_NOT_FOUND` na primeira
 - `GET /videos/:slug/stream` retorna `302`, e a URL de destino responde `206` a uma requisição com `Range`
 - `GET /videos/:slug/download` retorna `302`, e o destino responde com `Content-Disposition: attachment`
 - `GET /videos/:slug/status` do dono retorna `200` em qualquer status, incluindo `failure_reason`
+- `GET /videos/:slug/thumbnail` retorna `302`, e o destino responde um JPEG
+- `GET /videos/:slug/status` sem token retorna `401` e de outro usuário retorna `403`
 
 ---
 
-### SI-03.9 — Fluxo completo (cross-layer)
+### SI-03.9 — Fluxo completo de upload a processamento
 
-**Description:** Prova upload, fila, worker, storage e streaming juntos, contra os serviços reais do Compose.
-**Test Specs:** see `nestjs-project/specs/videos.plan.md`
+**Route:** POST /videos/:slug/upload/complete
+**Test Specs:** see `nestjs-project/specs/videos-processing-flow.plan.md`
+**Authorization:** Owner
+
+**Description:** Prova upload, fila, worker e storage juntos, contra os serviços reais do Compose.
 
 **Technical actions:**
 
-1. Criar `src/test/video-fixture.ts`, gerando MP4 com `ffmpeg -f lavfi` (per `phase-03-videos/TD-10`)
-2. Criar `test/videos.e2e-spec.ts` com os cenários de `nestjs-project/specs/videos.plan.md`, aguardando o `video-worker` real (per `phase-03-videos/TD-10`)
-3. Regenerar `nestjs-project/openapi.json` com `npm run openapi:export`
+1. Regenerar `nestjs-project/openapi.json` com `npm run openapi:export`
 
 **Tests:**
 
@@ -306,8 +325,10 @@ Entregar upload de vídeos de até 10GB direto ao object storage, com pré-cadas
 **Acceptance criteria:**
 
 - Um upload real termina em `ready` com thumbnail, sem chamar o worker diretamente
-- Um arquivo inválido enviado pelo mesmo fluxo termina em `failed`
-- Duas criações de vídeo geram `slug`s diferentes
+- Um vídeo que chegou a `ready` tem `metadata` e `thumbnail_key` gravados no banco
+- Um arquivo inválido enviado pelo mesmo fluxo termina em `failed`, sem thumbnail
+- `GET /videos/:slug/status` de um arquivo inválido retorna `failure_reason: "INVALID_VIDEO_FILE"`
+- `GET /videos/:slug` de um vídeo `failed` retorna `404`
 - `openapi.json` documenta todas as rotas de `### API Contracts`
 
 ---
@@ -340,38 +361,45 @@ Entregar upload de vídeos de até 10GB direto ao object storage, com pré-cadas
 
 #### Video
 
-Tabela `videos` (per `phase-03-videos/TD-03`, `phase-03-videos/TD-06`, `phase-03-videos/TD-08`).
+Tabela `videos` (per `phase-03-videos/TD-03`, `phase-03-videos/TD-05`, `phase-03-videos/TD-06`, `phase-03-videos/TD-08`).
 
-| Column | Type | Constraints | Notes |
-|--------|------|-------------|-------|
-| `id` | uuid | PK | Gerado no banco; usado na chave de storage e no `jobId` |
-| `channel_id` | uuid | FK → `channels.id`, NOT NULL, indexado | Dono do vídeo |
-| `slug` | varchar(11) | UNIQUE, NOT NULL | Identificador da URL única |
-| `title` | varchar(255) | NOT NULL | Padrão: nome do arquivo sem extensão |
-| `status` | enum `videos_status_enum` | NOT NULL, default `draft` | `draft`, `processing`, `ready`, `failed` |
-| `storage_key` | varchar | NOT NULL | `videos/{id}/original{ext}` |
-| `thumbnail_key` | varchar | NULL | `videos/{id}/thumbnail.jpg` |
-| `upload_id` | varchar | NULL, `select: false` | Id do multipart; limpo ao concluir |
-| `original_filename` | varchar(255) | NOT NULL | Usado no download |
-| `content_type` | varchar(100) | NOT NULL | Declarado no pré-cadastro |
-| `size_bytes` | bigint | NOT NULL | Transformado para `number` |
-| `duration_seconds` | numeric(12,3) | NULL | Transformado para `number` |
-| `metadata` | jsonb | NULL | `width`, `height`, `video_codec`, `audio_codec`, `bitrate`, `frame_rate`, `format_name` |
-| `failure_reason` | varchar(50) | NULL | `INVALID_VIDEO_FILE`, `PROCESSING_ERROR`, `ENQUEUE_FAILED` |
-| `created_at` | timestamp | NOT NULL | `@CreateDateColumn` |
-| `updated_at` | timestamp | NOT NULL | `@UpdateDateColumn` |
+| Field | Type | Constraints |
+|-------|------|-------------|
+| `id` | uuid | PK, gerado na aplicação; compõe `storage_key` e `jobId` |
+| `channel_id` | uuid | FK → `channels.id`, not null |
+| `slug` | varchar(11) | unique, not null; identificador da URL única |
+| `title` | varchar(255) | not null; padrão: nome do arquivo sem extensão |
+| `status` | enum `videos_status_enum` | not null, default `draft`; valores `draft`, `processing`, `ready`, `failed` |
+| `storage_key` | varchar | not null; `videos/{id}/original{ext}` |
+| `thumbnail_key` | varchar | null; `videos/{id}/thumbnail.jpg` |
+| `upload_id` | varchar | null, `select: false`; id do multipart, limpo ao concluir |
+| `original_filename` | varchar(255) | not null; usado no download |
+| `content_type` | varchar(100) | not null; declarado no pré-cadastro |
+| `size_bytes` | bigint | not null; transformado para `number` |
+| `duration_seconds` | numeric(12,3) | null; transformado para `number` |
+| `metadata` | jsonb | null; `width`, `height`, `video_codec`, `audio_codec`, `bitrate`, `frame_rate`, `format_name` |
+| `failure_reason` | varchar(50) | null; `INVALID_VIDEO_FILE`, `PROCESSING_ERROR`, `ENQUEUE_FAILED` |
+| `created_at` | timestamp | not null; `@CreateDateColumn` |
+| `updated_at` | timestamp | not null; `@UpdateDateColumn` |
 
-**Status transitions** (per `phase-03-videos/TD-08`): `draft → processing → ready`; `processing → failed`; `processing → draft` apenas quando o storage recusa a conclusão.
+**Relations:** `Channel` has many `Video` (one-to-many)
+**Indexes:** unique on `slug`; index on `channel_id`
+
+**Status transitions** (per `phase-03-videos/TD-08`): `draft → processing → ready`; `processing → failed`; `processing → draft` quando o storage recusa a conclusão. Toda transição é condicional ao status atual. `failed` é terminal: mantém o arquivo original, sem nova tentativa nem remoção pela API.
 
 ### API Contracts
 
 #### POST /videos (SI-03.4)
 
+**Request headers:**
+- Authorization: Bearer token
+- Content-Type: application/json
+
 **Request body:**
-- filename: string, required — até 255 caracteres
+- filename: string, required — não vazio, até 255 caracteres
 - size_bytes: integer, required — mínimo 1
-- content_type: string, required — até 100 caracteres
-- title: string, optional — até 255 caracteres
+- content_type: string, required — não vazio, até 100 caracteres
+- title: string, optional — não vazio, até 255 caracteres
 
 **Response 201:**
 - id: string (uuid)
@@ -381,121 +409,190 @@ Tabela `videos` (per `phase-03-videos/TD-03`, `phase-03-videos/TD-06`, `phase-03
 - part_count: integer
 
 **Error responses:**
-- 400 VALIDATION_ERROR, 401, 404 CHANNEL_NOT_FOUND, 413 VIDEO_TOO_LARGE, 415 UNSUPPORTED_VIDEO_TYPE, 429
+- 400 VALIDATION_ERROR: when the request body fails schema validation
+- 401: when the access token is missing or invalid
+- 404 CHANNEL_NOT_FOUND: when the user has no channel
+- 413 VIDEO_TOO_LARGE: when `size_bytes` exceeds `VIDEO_MAX_SIZE_BYTES`
+- 415 UNSUPPORTED_VIDEO_TYPE: when `content_type` has no `video/` prefix
+- 429: when the default rate limit is exceeded
 
 ---
 
 #### POST /videos/:slug/upload/parts (SI-03.5)
 
+**Request headers:**
+- Authorization: Bearer token
+- Content-Type: application/json
+
 **Request body:**
-- part_numbers: integer[], required — 1 a 100 itens
+- part_numbers: integer[], required — 1 a 100 itens, cada um maior ou igual a 1
 
 **Response 200:**
 - parts: `{ part_number: integer, url: string }[]`
-- expires_in: integer (segundos)
+- expires_in: integer — `3600` segundos (per `phase-03-videos/TD-13`)
 
 **Error responses:**
-- 400 VALIDATION_ERROR, 400 VIDEO_PART_OUT_OF_RANGE, 401, 403 VIDEO_ACCESS_DENIED, 404 VIDEO_NOT_FOUND, 409 VIDEO_UPLOAD_CLOSED
+- 400 VALIDATION_ERROR: when the request body fails schema validation
+- 400 VIDEO_PART_OUT_OF_RANGE: when a part number exceeds `part_count`
+- 401: when the access token is missing or invalid
+- 403 VIDEO_ACCESS_DENIED: when the user does not own the video
+- 404 VIDEO_NOT_FOUND: when the slug does not exist
+- 409 VIDEO_UPLOAD_CLOSED: when the video is not in `draft`
 
 ---
 
 #### GET /videos/:slug/upload/parts (SI-03.5)
 
+**Request headers:**
+- Authorization: Bearer token
+
 **Response 200:**
 - parts: `{ part_number: integer, etag: string, size_bytes: integer }[]`
 
 **Error responses:**
-- 401, 403 VIDEO_ACCESS_DENIED, 404 VIDEO_NOT_FOUND, 409 VIDEO_UPLOAD_CLOSED, 409 VIDEO_UPLOAD_EXPIRED
+- 401: when the access token is missing or invalid
+- 403 VIDEO_ACCESS_DENIED: when the user does not own the video
+- 404 VIDEO_NOT_FOUND: when the slug does not exist
+- 409 VIDEO_UPLOAD_CLOSED: when the video is not in `draft`
+- 409 VIDEO_UPLOAD_EXPIRED: when the storage no longer knows the multipart (per `phase-03-videos/TD-11`)
 
 ---
 
 #### POST /videos/:slug/upload/complete (SI-03.6)
 
+**Request headers:**
+- Authorization: Bearer token
+- Content-Type: application/json
+
 **Request body:**
-- parts: `{ part_number: integer, etag: string }[]`, required — 1 a 10.000 itens
+- parts: `{ part_number: integer, etag: string }[]`, required — 1 a 10.000 itens; `part_number` maior ou igual a 1, `etag` não vazio
 
 **Response 202:**
 - slug: string
 - status: `processing`
 
 **Error responses:**
-- 400 VALIDATION_ERROR, 401, 403 VIDEO_ACCESS_DENIED, 404 VIDEO_NOT_FOUND, 409 VIDEO_UPLOAD_CLOSED, 409 VIDEO_UPLOAD_EXPIRED, 422 VIDEO_UPLOAD_INCOMPLETE, 503 VIDEO_PROCESSING_UNAVAILABLE
+- 400 VALIDATION_ERROR: when the request body fails schema validation
+- 401: when the access token is missing or invalid
+- 403 VIDEO_ACCESS_DENIED: when the user does not own the video
+- 404 VIDEO_NOT_FOUND: when the slug does not exist
+- 409 VIDEO_UPLOAD_CLOSED: when the video is not in `draft`, or a concurrent completion won
+- 409 VIDEO_UPLOAD_EXPIRED: when the storage no longer knows the multipart (per `phase-03-videos/TD-11`)
+- 422 VIDEO_UPLOAD_INCOMPLETE: when the parts do not match the declared file, or the storage rejects them
+- 503 VIDEO_PROCESSING_UNAVAILABLE: when the job cannot be published
 
 ---
 
 #### DELETE /videos/:slug/upload (SI-03.6)
 
-**Response 204:** sem corpo.
+**Request headers:**
+- Authorization: Bearer token
+
+**Response 204:** No content.
 
 **Error responses:**
-- 401, 403 VIDEO_ACCESS_DENIED, 404 VIDEO_NOT_FOUND, 409 VIDEO_UPLOAD_CLOSED
+- 401: when the access token is missing or invalid
+- 403 VIDEO_ACCESS_DENIED: when the user does not own the video
+- 404 VIDEO_NOT_FOUND: when the slug does not exist
+- 409 VIDEO_UPLOAD_CLOSED: when the video is not in `draft`
 
 ---
 
 #### GET /videos/:slug (SI-03.8)
 
 **Response 200:**
-- slug, title: string
+- slug: string
+- title: string
 - status: `ready`
 - duration_seconds: number
-- metadata: object
+- metadata: `{ width, height, video_codec, audio_codec, bitrate, frame_rate, format_name }`, cada campo anulável (per `phase-03-videos/TD-05`)
 - size_bytes: integer
 - created_at: string (ISO-8601)
 
 **Error responses:**
-- 404 VIDEO_NOT_FOUND
+- 404 VIDEO_NOT_FOUND: when the slug does not exist or the video is not `ready`
 
 ---
 
 #### GET /videos/:slug/status (SI-03.8)
 
+**Request headers:**
+- Authorization: Bearer token
+
 **Response 200:**
-- id, slug, title: string
+- id: string (uuid)
+- slug: string
+- title: string
 - status: `draft | processing | ready | failed`
 - failure_reason: string | null
 - duration_seconds: number | null
 - has_thumbnail: boolean
-- created_at, updated_at: string (ISO-8601)
+- created_at: string (ISO-8601)
+- updated_at: string (ISO-8601)
 
 **Error responses:**
-- 401, 403 VIDEO_ACCESS_DENIED, 404 VIDEO_NOT_FOUND
+- 401: when the access token is missing or invalid
+- 403 VIDEO_ACCESS_DENIED: when the user does not own the video
+- 404 VIDEO_NOT_FOUND: when the slug does not exist
 
 ---
 
-#### GET /videos/:slug/stream, /download, /thumbnail (SI-03.8)
+#### GET /videos/:slug/stream (SI-03.8)
 
-**Response 302:** header `Location` com URL assinada no storage. O storage responde `Range` com `206 Partial Content`.
+**Response 302:** header `Location` com URL assinada válida por 4h (per `phase-03-videos/TD-13`). O storage responde `Range` com `206 Partial Content` (per `phase-03-videos/TD-07`).
 
 **Error responses:**
-- 404 VIDEO_NOT_FOUND
+- 404 VIDEO_NOT_FOUND: when the slug does not exist or the video is not `ready`
+
+---
+
+#### GET /videos/:slug/download (SI-03.8)
+
+**Response 302:** header `Location` com URL assinada válida por 4h; o storage responde com `Content-Disposition: attachment` (per `phase-03-videos/TD-07`, `phase-03-videos/TD-13`).
+
+**Error responses:**
+- 404 VIDEO_NOT_FOUND: when the slug does not exist or the video is not `ready`
+
+---
+
+#### GET /videos/:slug/thumbnail (SI-03.8)
+
+**Response 302:** header `Location` com URL assinada válida por 4h para o JPEG gerado (per `phase-03-videos/TD-07`, `phase-03-videos/TD-13`).
+
+**Error responses:**
+- 404 VIDEO_NOT_FOUND: when the slug does not exist or the video is not `ready`
 
 ### Authorization Matrix
 
 | Endpoint | Anonymous | Authenticated | Owner |
 |----------|-----------|---------------|-------|
-| `POST /videos` | 401 | Allowed | — |
-| `POST`, `GET /videos/:slug/upload/parts` | 401 | 403 | Allowed |
-| `POST /videos/:slug/upload/complete` | 401 | 403 | Allowed |
-| `DELETE /videos/:slug/upload` | 401 | 403 | Allowed |
-| `GET /videos/:slug/status` | 401 | 403 | Allowed |
-| `GET /videos/:slug`, `/stream`, `/download`, `/thumbnail` | Allowed (`ready`) | Allowed (`ready`) | Allowed (`ready`) |
+| POST /videos | ✗ | ✓ | ✓ |
+| POST /videos/:slug/upload/parts | ✗ | ✗ | ✓ |
+| GET /videos/:slug/upload/parts | ✗ | ✗ | ✓ |
+| POST /videos/:slug/upload/complete | ✗ | ✗ | ✓ |
+| DELETE /videos/:slug/upload | ✗ | ✗ | ✓ |
+| GET /videos/:slug/status | ✗ | ✗ | ✓ |
+| GET /videos/:slug | ✓ | ✓ | ✓ |
+| GET /videos/:slug/stream | ✓ | ✓ | ✓ |
+| GET /videos/:slug/download | ✓ | ✓ | ✓ |
+| GET /videos/:slug/thumbnail | ✓ | ✓ | ✓ |
 
-Owner é o usuário cujo canal é `videos.channel_id`.
+Owner é o usuário cujo canal é `videos.channel_id`. As rotas públicas só atendem vídeo `ready` (per `phase-03-videos/TD-07`).
 
 ### Error Catalog
 
-| Scenario | errorCode | HTTP | Message |
-|----------|-----------|------|---------|
-| Usuário sem canal | `CHANNEL_NOT_FOUND` | 404 | Channel not found |
-| Vídeo inexistente ou indisponível | `VIDEO_NOT_FOUND` | 404 | Video not found |
-| Usuário não é o dono | `VIDEO_ACCESS_DENIED` | 403 | You do not own this video |
-| Tamanho acima do limite | `VIDEO_TOO_LARGE` | 413 | Video exceeds the maximum allowed size |
-| Tipo não é `video/*` | `UNSUPPORTED_VIDEO_TYPE` | 415 | Only video files are accepted |
-| Parte fora de `1..part_count` | `VIDEO_PART_OUT_OF_RANGE` | 400 | Part number is out of range |
-| Upload já encerrado | `VIDEO_UPLOAD_CLOSED` | 409 | Video upload is already closed |
-| Multipart desconhecido no storage | `VIDEO_UPLOAD_EXPIRED` | 409 | Video upload no longer exists |
-| Partes divergem do declarado | `VIDEO_UPLOAD_INCOMPLETE` | 422 | Uploaded parts do not match the declared file |
-| Fila indisponível | `VIDEO_PROCESSING_UNAVAILABLE` | 503 | Video processing is temporarily unavailable |
+| errorCode | HTTP | Trigger |
+|-----------|------|---------|
+| CHANNEL_NOT_FOUND | 404 | Usuário sem canal |
+| VIDEO_NOT_FOUND | 404 | Vídeo inexistente, ou fora de `ready` em rota pública |
+| VIDEO_ACCESS_DENIED | 403 | Usuário não é o dono do vídeo |
+| VIDEO_TOO_LARGE | 413 | `size_bytes` acima de `VIDEO_MAX_SIZE_BYTES` |
+| UNSUPPORTED_VIDEO_TYPE | 415 | `content_type` sem o prefixo `video/` |
+| VIDEO_PART_OUT_OF_RANGE | 400 | Parte acima de `part_count` |
+| VIDEO_UPLOAD_CLOSED | 409 | Upload fora de `draft`, ou conclusão concorrente perdida |
+| VIDEO_UPLOAD_EXPIRED | 409 | Multipart desconhecido pelo storage ao listar ou concluir; `DELETE` tolera este caso (per `phase-03-videos/TD-11`) |
+| VIDEO_UPLOAD_INCOMPLETE | 422 | Partes divergem do arquivo declarado, ou o storage responde `EntityTooSmall`, `InvalidPart` ou `InvalidPartOrder` |
+| VIDEO_PROCESSING_UNAVAILABLE | 503 | Publicação do job falhou |
 
 Formato de erro herdado: `{ statusCode, error, message }` (per `phase-02-auth/TD-07`).
 
@@ -510,7 +607,7 @@ Formato de erro herdado: `{ statusCode, error, message }` (per `phase-02-auth/TD
 ```
 
 **Producer:** `VideoQueueService` (per `phase-03-videos/TD-01`)
-**Consumer:** `VideoProcessor` no serviço `video-worker` (per `phase-03-videos/TD-04`)
+**Consumer:** `VideoProcessor` no serviço `video-worker`
 **Trigger:** transição `draft → processing` em `POST /videos/:slug/upload/complete`
 **Delivery semantics:** at-least-once; o `jobId` igual ao `id` do vídeo e a transição condicional tornam a reentrega inofensiva (per `phase-03-videos/TD-08`)
 **Job options:** `attempts: 3`, `backoff: { type: 'exponential', delay: 5000 }`, `removeOnComplete: true`, `removeOnFail: 100`
@@ -524,10 +621,10 @@ SI-03.1 (root)
 │   └── SI-03.4 — depends on SI-03.2, SI-03.3 (pré-cadastro usa storage e entidade)
 │       └── SI-03.5 — depends on SI-03.4 (partes exigem vídeo em draft)
 │           └── SI-03.6 — depends on SI-03.5 (conclusão consome as partes)
-│               ├── SI-03.7 — depends on SI-03.6 (worker consome o job publicado)
-│               └── SI-03.8 — depends on SI-03.6 (leitura exige vídeo processável)
-│                   └── SI-03.9 — depends on SI-03.7, SI-03.8 (fluxo completo)
-│                       └── SI-03.10 — depends on SI-03.9 (documenta o estado final)
+│               └── SI-03.7 — depends on SI-03.6 (worker consome o job publicado)
+│                   └── SI-03.8 — depends on SI-03.6, SI-03.7 (leitura exige vídeo processado)
+│                       └── SI-03.9 — depends on SI-03.7, SI-03.8 (fluxo completo)
+│                           └── SI-03.10 — depends on SI-03.9 (documenta o estado final)
 └── SI-03.3 — depends on SI-03.1 (entidade nasce com a infraestrutura de testes)
 
 ---
@@ -542,7 +639,7 @@ SI-03.1 (root)
 - [x] SI-03.6 — Conclusão do upload e enfileiramento
 - [x] SI-03.7 — Worker de vídeo
 - [x] SI-03.8 — Leitura pública, streaming e download
-- [x] SI-03.9 — Fluxo completo (cross-layer)
+- [x] SI-03.9 — Fluxo completo de upload a processamento
 - [x] SI-03.10 — Documentação de IA e diagrama
 
 **Full test suites:**
@@ -551,3 +648,4 @@ SI-03.1 (root)
 - [x] E2E tests pass (`cd nestjs-project && docker compose exec nestjs-api npm run test:e2e`)
 - [x] Type/compilation checks pass (`cd nestjs-project && docker compose exec nestjs-api npx tsc --noEmit`)
 - [x] Lint passes (`cd nestjs-project && docker compose exec nestjs-api npm run lint`)
+- [x] Project builds successfully (`cd nestjs-project && docker compose exec nestjs-api npm run build`)

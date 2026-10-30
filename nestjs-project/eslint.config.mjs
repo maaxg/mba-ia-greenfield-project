@@ -34,7 +34,7 @@ export default tseslint.config(
   },
   {
     // Tests inspect `any`-typed mocks, JSON bodies and bound jest.fn() methods by design.
-    files: ['**/*.spec.ts', '**/*.integration-spec.ts', '**/*.e2e-spec.ts', 'src/test/**/*.ts'],
+    files: ['**/*.spec.ts', '**/*.integration-spec.ts', '**/*.e2e-spec.ts', 'test/**/*.ts', 'src/test/**/*.ts'],
     rules: {
       '@typescript-eslint/no-unsafe-assignment': 'off',
       '@typescript-eslint/no-unsafe-member-access': 'off',
