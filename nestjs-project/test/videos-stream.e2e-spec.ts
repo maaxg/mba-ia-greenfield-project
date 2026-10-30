@@ -98,4 +98,14 @@ describe('videos-stream.e2e-spec', () => {
       .auth(ctx.otherToken, { type: 'bearer' })
       .expect(403);
   });
+
+  it('should reject an invalid token on the status route', async () => {
+    const { slug } = await ctx.startUpload(ctx.fixture);
+
+    await ctx
+      .http()
+      .get(`/videos/${slug}/status`)
+      .auth('invalid-token', { type: 'bearer' })
+      .expect(401);
+  });
 });

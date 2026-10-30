@@ -63,7 +63,7 @@ export class VideosController {
   @errorResponse(413, 'File exceeds the maximum allowed size')
   @errorResponse(415, 'File is not a video')
   @errorResponse(429, 'Too many requests')
-  initiateUpload(
+  async initiateUpload(
     @CurrentUser() user: JwtPayload,
     @Body() dto: InitiateUploadDto,
   ): Promise<InitiateUploadResponseDto> {
@@ -88,7 +88,7 @@ export class VideosController {
   @errorResponse(403, 'The user does not own this video')
   @errorResponse(404, 'Video not found')
   @errorResponse(409, 'The upload is already closed')
-  signUploadParts(
+  async signUploadParts(
     @CurrentUser() user: JwtPayload,
     @Param('slug') slug: string,
     @Body() dto: SignUploadPartsDto,
@@ -141,7 +141,7 @@ export class VideosController {
   @errorResponse(409, 'The upload is closed or no longer exists')
   @errorResponse(422, 'Uploaded parts do not match the declared file')
   @errorResponse(503, 'The processing queue is unavailable')
-  completeUpload(
+  async completeUpload(
     @CurrentUser() user: JwtPayload,
     @Param('slug') slug: string,
     @Body() dto: CompleteUploadDto,
@@ -162,7 +162,7 @@ export class VideosController {
   @errorResponse(403, 'The user does not own this video')
   @errorResponse(404, 'Video not found')
   @errorResponse(409, 'The upload is already closed')
-  cancelUpload(
+  async cancelUpload(
     @CurrentUser() user: JwtPayload,
     @Param('slug') slug: string,
   ): Promise<void> {
@@ -184,7 +184,7 @@ export class VideosController {
   @errorResponse(401, 'Missing or invalid access token')
   @errorResponse(403, 'The user does not own this video')
   @errorResponse(404, 'Video not found')
-  getVideoStatus(
+  async getVideoStatus(
     @CurrentUser() user: JwtPayload,
     @Param('slug') slug: string,
   ): Promise<VideoStatusResponseDto> {
@@ -244,7 +244,9 @@ export class VideosController {
     type: PublicVideoResponseDto,
   })
   @errorResponse(404, 'Video not found or not ready')
-  getPublicVideo(@Param('slug') slug: string): Promise<PublicVideoResponseDto> {
+  async getPublicVideo(
+    @Param('slug') slug: string,
+  ): Promise<PublicVideoResponseDto> {
     return this.videosService.getPublicVideo(slug);
   }
 }

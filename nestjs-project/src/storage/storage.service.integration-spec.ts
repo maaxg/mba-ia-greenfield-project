@@ -6,14 +6,27 @@ import {
   VideoUploadIncompleteException,
 } from '../common/exceptions/domain.exception';
 import storageConfig from '../config/storage.config';
+import { type OpenUpload, removeFromStorage } from '../test/storage-cleanup';
 import { StorageService } from './storage.service';
 
 const FIVE_MIB = 5 * 1024 * 1024;
 
 describe('StorageService (integration)', () => {
   let service: StorageService;
+  let keys: string[] = [];
+  let uploads: OpenUpload[] = [];
 
-  const newKey = () => `test/${randomUUID()}/original.mp4`;
+  const newKey = () => {
+    const key = `test/${randomUUID()}/original.mp4`;
+    keys.push(key);
+    return key;
+  };
+
+  const openUpload = async (key: string) => {
+    const uploadId = await service.createMultipartUpload(key, 'video/mp4');
+    uploads.push({ key, uploadId });
+    return uploadId;
+  };
 
   const putPart = async (
     key: string,
@@ -28,7 +41,7 @@ describe('StorageService (integration)', () => {
   };
 
   const uploadObject = async (key: string, body: Buffer) => {
-    const uploadId = await service.createMultipartUpload(key, 'video/mp4');
+    const uploadId = await openUpload(key);
     const etag = await putPart(key, uploadId, 1, body);
     await service.completeMultipartUpload(key, uploadId, [
       { part_number: 1, etag },
@@ -45,9 +58,15 @@ describe('StorageService (integration)', () => {
     service = moduleRef.get(StorageService);
   });
 
+  afterEach(async () => {
+    await removeFromStorage(keys, uploads);
+    keys = [];
+    uploads = [];
+  });
+
   it('should assemble an object from parts uploaded with presigned URLs', async () => {
     const key = newKey();
-    const uploadId = await service.createMultipartUpload(key, 'video/mp4');
+    const uploadId = await openUpload(key);
 
     const first = randomBytes(FIVE_MIB);
     const last = randomBytes(1024);
@@ -68,7 +87,7 @@ describe('StorageService (integration)', () => {
 
   it('should list uploaded parts so an upload can resume', async () => {
     const key = newKey();
-    const uploadId = await service.createMultipartUpload(key, 'video/mp4');
+    const uploadId = await openUpload(key);
     const etag = await putPart(key, uploadId, 2, randomBytes(FIVE_MIB));
 
     await expect(service.listParts(key, uploadId)).resolves.toEqual([
@@ -115,7 +134,7 @@ describe('StorageService (integration)', () => {
 
   it('should report an aborted upload as expired', async () => {
     const key = newKey();
-    const uploadId = await service.createMultipartUpload(key, 'video/mp4');
+    const uploadId = await openUpload(key);
     await service.abortMultipartUpload(key, uploadId);
 
     await expect(service.listParts(key, uploadId)).rejects.toThrow(
@@ -133,7 +152,7 @@ describe('StorageService (integration)', () => {
 
   it('should report undersized parts as an incomplete upload', async () => {
     const key = newKey();
-    const uploadId = await service.createMultipartUpload(key, 'video/mp4');
+    const uploadId = await openUpload(key);
     const etag1 = await putPart(key, uploadId, 1, randomBytes(1024));
     const etag2 = await putPart(key, uploadId, 2, randomBytes(1024));
 

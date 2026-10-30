@@ -30,6 +30,7 @@ import { SignUploadPartsResponseDto } from './dto/sign-upload-parts-response.dto
 import { VideoStatusResponseDto } from './dto/video-status-response.dto';
 import { Video, type VideoMetadata } from './entities/video.entity';
 import { generateSlug } from './slug.util';
+import { videoOriginalKey } from './storage-key.util';
 import { VideoQueueService } from './video-queue.service';
 import {
   MAX_PARTS_PER_UPLOAD,
@@ -361,7 +362,7 @@ export class VideosService {
             channel_id: channelId,
             slug: generateSlug(),
             title: dto.title ?? parse(dto.filename).name,
-            storage_key: `videos/${id}/original${safeExtension}`,
+            storage_key: videoOriginalKey(id, safeExtension),
             original_filename: dto.filename,
             content_type: dto.content_type,
             size_bytes: dto.size_bytes,

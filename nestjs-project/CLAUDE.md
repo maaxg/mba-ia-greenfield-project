@@ -152,7 +152,7 @@ Phase 03 lives in four modules. Decisions: `docs/decisions/technical-decisions-p
 | Path | Responsibility |
 |---|---|
 | `src/videos/` | HTTP API, draft creation, upload lifecycle, public reads, queue publishing |
-| `src/storage/` | `StorageService`, the only code that talks to S3 |
+| `src/storage/` | `StorageService`, the only application code that talks to S3 |
 | `src/queue/` | Shared BullMQ connection |
 | `src/video-worker/` | `VideoProcessor`, `VideoProcessingService`, `FfmpegService`; entrypoint `src/worker.ts` |
 
@@ -197,6 +197,8 @@ FFmpeg runs through `child_process.spawn` and reads the signed URL over HTTP, so
 
 - `test/videos*.e2e-spec.ts` has one file per plan spec and shares `test/videos-e2e.helper.ts`. The files that reach `ready` or `failed` need the real `video-worker` running and up to date.
 - `src/test/video-fixture.ts` generates the test MP4 with FFmpeg; do not commit binary fixtures.
+- `src/test/storage-cleanup.ts` removes what a spec created, by exact key. Tests share the bucket with development data, so never delete by prefix. Call `removeVideosFromStorage` from `afterEach`, while the rows still belong to that test.
+- The e2e `afterEach` waits for the queue to go idle, otherwise the worker can write a thumbnail after the cleanup.
 - Integration specs publish to a dedicated queue so the running worker does not consume their jobs.
 - `Video` must be listed in every `ALL_ENTITIES`, because `Channel` declares the inverse relation.
 - `@nestjs/bullmq` stays on the `11.x` line: `12.x` is ESM-only and Jest cannot load it. `ioredis` is a direct dependency because `bullmq` 6 treats it as optional.
