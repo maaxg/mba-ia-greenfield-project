@@ -31,19 +31,19 @@
 
 ### SI-03.4 — Pré-cadastro e início do upload
 - **Status:** completed
-- **Tests:** 15 passing nesta etapa (slug.util.spec.ts, videos.service.spec.ts, videos.service.integration-spec.ts); e2e em SI-03.9
+- **Tests:** 45 passing no total de SI-03.4, SI-03.5, SI-03.6 e SI-03.8, que compartilham arquivos (videos.service.spec.ts: 34; videos.service.integration-spec.ts: 9; slug.util.spec.ts: 2); e2e em SI-03.9
 - **Observations:**
   - `isPgUniqueViolationOnColumn` foi movido de `channels.service.ts` para `src/database/pg-errors.ts`, para reuso.
   - O tamanho da parte cresce automaticamente se a configuração ultrapassar 10.000 partes.
 
 ### SI-03.5 — Assinatura e retomada de partes
 - **Status:** completed
-- **Tests:** 6 passing nesta etapa (videos.service.spec.ts, videos.service.integration-spec.ts); e2e em SI-03.9
+- **Tests:** contados em SI-03.4; e2e em SI-03.9
 - **Observations:** none
 
 ### SI-03.6 — Conclusão do upload e enfileiramento
 - **Status:** completed
-- **Tests:** 16 passing nesta etapa (videos.service.spec.ts, videos.service.integration-spec.ts, queue.module.spec.ts, storage.service.integration-spec.ts); e2e em SI-03.9
+- **Tests:** contados em SI-03.4, mais 1 em queue.module.spec.ts; e2e em SI-03.9
 - **Observations:**
   - `@nestjs/bullmq` foi fixado em `^11.0.5`: a linha 12 é só ESM e não carrega no Jest. `ioredis` virou dependência direta porque o `bullmq` 6 o trata como opcional. Ambos estão em `**Revisions:**` de `phase-03-videos/TD-01`.
   - A fila é registrada em `VideosModule` com `enableOfflineQueue: false`, para responder `503` em vez de segurar a requisição com o Redis fora.
@@ -51,14 +51,14 @@
 
 ### SI-03.7 — Worker de vídeo
 - **Status:** completed
-- **Tests:** 22 passing (ffmpeg.service.integration-spec.ts: 5; video-processing.service.integration-spec.ts: 7; video.processor.spec.ts: 8; video-worker.module.spec.ts: 1; mais o caso de redação)
+- **Tests:** 21 passing (ffmpeg.service.integration-spec.ts: 5; video-processing.service.integration-spec.ts: 7; video.processor.spec.ts: 8; video-worker.module.spec.ts: 1)
 - **Observations:**
   - O stderr do FFmpeg repetia a URL assinada, que ia parar nos logs. A verificação manual revelou isso; a URL agora é removida da mensagem.
   - `src/database/database.module.ts` foi extraído de `AppModule` para reuso no worker.
 
 ### SI-03.8 — Leitura pública, streaming e download
 - **Status:** completed
-- **Tests:** 8 passing nesta etapa (videos.service.spec.ts, videos.service.integration-spec.ts); e2e em SI-03.9
+- **Tests:** contados em SI-03.4; e2e em SI-03.9
 - **Observations:** none
 
 ### SI-03.9 — Fluxo completo (cross-layer)
