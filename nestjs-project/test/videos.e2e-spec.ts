@@ -2,7 +2,7 @@ import { setupVideosE2e } from './videos-e2e.helper';
 
 const TEN_GIB = 10737418240;
 
-describe('POST /videos (e2e)', () => {
+describe('videos.e2e-spec', () => {
   const ctx = setupVideosE2e();
 
   const validBody = {

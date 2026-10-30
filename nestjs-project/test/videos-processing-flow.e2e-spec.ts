@@ -5,7 +5,7 @@ import { setupVideosE2e, WORKER_TEST_TIMEOUT_MS } from './videos-e2e.helper';
 
 jest.setTimeout(WORKER_TEST_TIMEOUT_MS);
 
-describe('Video processing flow with the real worker (e2e)', () => {
+describe('videos-processing-flow.e2e-spec', () => {
   const ctx = setupVideosE2e();
 
   const uploadInvalidFile = () =>

@@ -1,6 +1,6 @@
 import { setupVideosE2e } from './videos-e2e.helper';
 
-describe('/videos/:slug/upload/parts (e2e)', () => {
+describe('videos-upload-parts.e2e-spec', () => {
   const ctx = setupVideosE2e();
 
   it('should sign a URL per part', async () => {

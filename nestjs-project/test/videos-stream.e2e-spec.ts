@@ -4,7 +4,7 @@ import { setupVideosE2e, WORKER_TEST_TIMEOUT_MS } from './videos-e2e.helper';
 
 jest.setTimeout(WORKER_TEST_TIMEOUT_MS);
 
-describe('Video reads (e2e)', () => {
+describe('videos-stream.e2e-spec', () => {
   const ctx = setupVideosE2e();
 
   const uploadReadyVideo = async (): Promise<string> => {

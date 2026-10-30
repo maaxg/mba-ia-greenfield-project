@@ -2,7 +2,7 @@ import { Video } from '../src/videos/entities/video.entity';
 import { VideoStatus } from '../src/videos/videos.constants';
 import { setupVideosE2e } from './videos-e2e.helper';
 
-describe('Upload completion and cancellation (e2e)', () => {
+describe('videos-upload-complete.e2e-spec', () => {
   const ctx = setupVideosE2e();
 
   it('should reject parts that do not cover the file', async () => {
