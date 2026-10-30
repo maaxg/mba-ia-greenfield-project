@@ -64,7 +64,7 @@ Entregar upload de vídeos de até 10GB direto ao object storage, com pré-cadas
 2. Implementar `createMultipartUpload`, `presignUploadPart` (validade de 1h), `listParts`, `completeMultipartUpload` e `abortMultipartUpload` (per `phase-03-videos/TD-02`, `phase-03-videos/TD-13`)
 3. Implementar `putObject`, `presignGetObject` para o cliente e `presignInternalGetObject` para o worker, com validade de 4h (per `phase-03-videos/TD-05`, `phase-03-videos/TD-07`, `phase-03-videos/TD-13`)
 4. Adicionar as exceções de `### Error Catalog` a `domain.exception.ts`; converter `NoSuchUpload` em `VideoUploadExpiredException`, e `EntityTooSmall`, `InvalidPart` e `InvalidPartOrder` em `VideoUploadIncompleteException` (per `phase-03-videos/TD-02`)
-5. Criar e exportar `StorageModule`
+5. Criar e exportar `StorageModule`; criar `src/test/storage-cleanup.ts`, que remove dos specs o que eles criaram, por chave exata (per `phase-03-videos/TD-10`)
 
 **Tests:**
 
@@ -100,7 +100,7 @@ Entregar upload de vídeos de até 10GB direto ao object storage, com pré-cadas
 
 | Artifact | Layer | Test file |
 |----------|-------|-----------|
-| `Video` | Integration: constraints, defaults, FK, bigint | `src/videos/entities/video.entity.integration-spec.ts` |
+| `Video` | Integration: unique, FK, enum, not null, defaults, bigint | `src/videos/entities/video.entity.integration-spec.ts` |
 | `CreateVideos` | Integration: aplica e reverte | `src/database/migrations.integration-spec.ts` |
 
 **Dependencies:** SI-03.1
@@ -126,7 +126,7 @@ Entregar upload de vídeos de até 10GB direto ao object storage, com pré-cadas
 **Technical actions:**
 
 1. Adicionar `findByUserId` a `ChannelsService` (resolve DG-1)
-2. Criar `src/videos/slug.util.ts` com base62 de 11 caracteres via `crypto.randomInt` (per `phase-03-videos/TD-06`)
+2. Criar `src/videos/slug.util.ts` com base62 de 11 caracteres via `crypto.randomInt` (per `phase-03-videos/TD-06`) e `src/videos/storage-key.util.ts` com as chaves do original e da thumbnail (per `phase-03-videos/TD-03`)
 3. Criar `VideosService.initiateUpload`: valida tamanho e tipo, cria `draft`, retenta colisão de slug e compensa removendo o rascunho se o storage falhar (per `phase-03-videos/TD-02`, `phase-03-videos/TD-08`)
 4. Criar `VideosController` com `POST /videos`, `InitiateUploadDto` e respostas OpenAPI; `@SkipThrottle()` na classe, mantendo o limite neste método (per `phase-03-videos/TD-07`)
 5. Criar `src/test/video-fixture.ts`, gerando MP4 com `ffmpeg -f lavfi`, e `test/videos-e2e.helper.ts`, compartilhado pelos arquivos e2e de vídeo (per `phase-03-videos/TD-10`)
@@ -137,7 +137,8 @@ Entregar upload de vídeos de até 10GB direto ao object storage, com pré-cadas
 |----------|-------|-----------|
 | `generateSlug` | Unit: tamanho, alfabeto, unicidade | `src/videos/slug.util.spec.ts` |
 | `VideosService` | Unit: ramos de validação e compensação | `src/videos/videos.service.spec.ts` |
-| `VideosService` | Integration: rascunho real no banco e no MinIO | `src/videos/videos.service.integration-spec.ts` |
+| `storage-key.util` | Unit: chaves do original e da thumbnail | `src/videos/storage-key.util.spec.ts` |
+| `VideosService` | Integration: rascunho real no banco e no MinIO, colisão real de slug | `src/videos/videos.service.integration-spec.ts` |
 | `ChannelsService` | Integration: `findByUserId` | `src/channels/channels.service.integration-spec.ts` |
 
 **Dependencies:** SI-03.2, SI-03.3
@@ -152,6 +153,8 @@ Entregar upload de vídeos de até 10GB direto ao object storage, com pré-cadas
 - Se o storage falhar ao abrir o multipart, nenhuma linha fica em `videos`
 - `POST /videos` com `size_bytes` de 10 GiB retorna `201` com `part_count: 160`
 - Duas chamadas a `POST /videos` retornam `slug`s diferentes
+- `POST /videos` com token inválido retorna `401`
+- Uma colisão de `slug` no banco gera outro `slug`; esgotadas as tentativas, nenhuma linha nova fica em `videos`
 
 ---
 
@@ -188,6 +191,9 @@ Entregar upload de vídeos de até 10GB direto ao object storage, com pré-cadas
 - Mais de 10 requisições de assinatura por minuto não retornam `429`
 - `POST /videos/:slug/upload/parts` de vídeo inexistente retorna `404` com `VIDEO_NOT_FOUND`
 - `POST /videos/:slug/upload/parts` com `part_numbers: []` retorna `400` com `VALIDATION_ERROR`
+- `POST /videos/:slug/upload/parts` sem token ou com token inválido retorna `401`
+- `GET /videos/:slug/upload/parts` sem token ou com token inválido retorna `401`
+- `GET /videos/:slug/upload/parts` de outro usuário retorna `403` com `VIDEO_ACCESS_DENIED`
 
 ---
 
@@ -212,7 +218,7 @@ Entregar upload de vídeos de até 10GB direto ao object storage, com pré-cadas
 | Artifact | Layer | Test file |
 |----------|-------|-----------|
 | `VideosService` | Unit: partes divergentes, reversão, `ENQUEUE_FAILED` | `src/videos/videos.service.spec.ts` |
-| `VideosService` | Integration: corrida de conclusão, Redis e MinIO reais | `src/videos/videos.service.integration-spec.ts` |
+| `VideosService` | Integration: corrida de conclusão, reversão para `draft`, `ENQUEUE_FAILED`, upload expirado, Redis e MinIO reais | `src/videos/videos.service.integration-spec.ts` |
 | `QueueModule` | Unit: compilation test | `src/queue/queue.module.spec.ts` |
 | `VideosModule` | Unit: compilation test | `src/videos/videos.module.spec.ts` |
 
@@ -221,15 +227,15 @@ Entregar upload de vídeos de até 10GB direto ao object storage, com pré-cadas
 **Acceptance criteria:**
 
 - `POST /videos/:slug/upload/complete` com partes corretas retorna `202` com `status: "processing"`
-- O job `process-video` fica na fila com `jobId` igual ao `id` do vídeo
+- O job `process-video` fica na fila com `jobId` igual ao `id` do vídeo; se o storage rejeitar a conclusão o vídeo volta a `draft`, e se a fila falhar fica `failed` com `ENQUEUE_FAILED` e a resposta é `503`
 - Soma das partes diferente de `size_bytes` retorna `422` com `VIDEO_UPLOAD_INCOMPLETE` e o vídeo segue `draft`
 - Duas conclusões simultâneas resultam em um `202` e um `409` com `VIDEO_UPLOAD_CLOSED`
-- `DELETE /videos/:slug/upload` retorna `204` e o vídeo deixa de existir
+- `DELETE /videos/:slug/upload` retorna `204` e o vídeo deixa de existir; sem token ou com token inválido retorna `401`, e de outro usuário retorna `403` com `VIDEO_ACCESS_DENIED`
 - `DELETE /videos/:slug/upload` de vídeo em `processing` retorna `409` com `VIDEO_UPLOAD_CLOSED`
 - `POST /videos/:slug/upload/complete` com corpo inválido retorna `400` com `VALIDATION_ERROR`
-- `POST /videos/:slug/upload/complete` de outro usuário retorna `403` com `VIDEO_ACCESS_DENIED`
+- `POST /videos/:slug/upload/complete` de outro usuário retorna `403` com `VIDEO_ACCESS_DENIED`; sem token ou com token inválido retorna `401`
 - Uma segunda `POST /videos/:slug/upload/complete` retorna `409` com `VIDEO_UPLOAD_CLOSED`
-- `DELETE /videos/:slug/upload` de rascunho cujo multipart expirou retorna `204` e remove o rascunho
+- `DELETE /videos/:slug/upload` de rascunho cujo multipart expirou retorna `204` e remove o rascunho; a conclusão desse upload retorna `409` com `VIDEO_UPLOAD_EXPIRED`
 
 ---
 
@@ -298,7 +304,7 @@ Entregar upload de vídeos de até 10GB direto ao object storage, com pré-cadas
 - `GET /videos/:slug/download` retorna `302`, e o destino responde com `Content-Disposition: attachment`
 - `GET /videos/:slug/status` do dono retorna `200` em qualquer status, incluindo `failure_reason`
 - `GET /videos/:slug/thumbnail` retorna `302`, e o destino responde um JPEG
-- `GET /videos/:slug/status` sem token retorna `401` e de outro usuário retorna `403`
+- `GET /videos/:slug/status` sem token ou com token inválido retorna `401` e de outro usuário retorna `403`
 
 ---
 

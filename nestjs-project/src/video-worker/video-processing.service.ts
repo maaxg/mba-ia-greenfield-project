@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { StorageService } from '../storage/storage.service';
 import { Video } from '../videos/entities/video.entity';
+import { videoThumbnailKey } from '../videos/storage-key.util';
 import {
   THUMBNAIL_CONTENT_TYPE,
   THUMBNAIL_FRAME_RATIO,
@@ -36,7 +37,7 @@ export class VideoProcessingService {
       durationSeconds * THUMBNAIL_FRAME_RATIO,
     );
 
-    const thumbnailKey = `videos/${video.id}/thumbnail.jpg`;
+    const thumbnailKey = videoThumbnailKey(video.id);
     await this.storageService.putObject(
       thumbnailKey,
       frame,

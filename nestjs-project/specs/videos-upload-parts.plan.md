@@ -84,6 +84,26 @@ Entrega URLs assinadas por parte e lista o que o storage já recebeu, o que perm
   1. POST /videos/:slug/upload/parts 12 vezes seguidas
     - expect: todas respondem HTTP 200
 
+#### 1.7. require-token-to-sign-parts
+
+**Covers AC:** #8
+**Source:** auto
+**Last sync:** 2026-10-30T18:41:07Z
+
+**Steps:**
+  1. POST /videos/:slug/upload/parts sem token
+    - expect: HTTP 401
+
+#### 1.8. reject-invalid-token-when-signing
+
+**Covers AC:** #8
+**Source:** auto
+**Last sync:** 2026-10-30T18:41:07Z
+
+**Steps:**
+  1. POST /videos/:slug/upload/parts com um token inválido
+    - expect: HTTP 401
+
 ### 2. GET /videos/:slug/upload/parts
 
 **Setup:** `setupVideosE2e` (`test/videos-e2e.helper.ts`) sobe o `AppModule` com `Test.createTestingModule`; o `beforeEach` limpa as tabelas e cria dois usuários confirmados e autenticados.
@@ -100,3 +120,34 @@ Entrega URLs assinadas por parte e lista o que o storage já recebeu, o que perm
   2. GET /videos/:slug/upload/parts
     - expect: HTTP 200
     - expect: `parts` traz `part_number`, `etag` e `size_bytes` da parte enviada
+
+#### 2.2. require-token-to-list-parts
+
+**Covers AC:** #9
+**Source:** auto
+**Last sync:** 2026-10-30T18:41:07Z
+
+**Steps:**
+  1. GET /videos/:slug/upload/parts sem token
+    - expect: HTTP 401
+
+#### 2.3. reject-invalid-token-when-listing
+
+**Covers AC:** #9
+**Source:** auto
+**Last sync:** 2026-10-30T18:41:07Z
+
+**Steps:**
+  1. GET /videos/:slug/upload/parts com um token inválido
+    - expect: HTTP 401
+
+#### 2.4. deny-another-user-the-list
+
+**Covers AC:** #10
+**Source:** auto
+**Last sync:** 2026-10-30T18:41:07Z
+
+**Steps:**
+  1. GET /videos/:slug/upload/parts com o token do outro usuário
+    - expect: HTTP 403
+    - expect: `error` igual a `VIDEO_ACCESS_DENIED`

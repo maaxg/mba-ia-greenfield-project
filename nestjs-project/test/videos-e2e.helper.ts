@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto';
+import { getQueueToken } from '@nestjs/bullmq';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { ThrottlerStorage, ThrottlerStorageService } from '@nestjs/throttler';
+import type { Queue } from 'bullmq';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { DataSource } from 'typeorm';
@@ -9,9 +11,10 @@ import { AppModule } from '../src/app.module';
 import { DomainExceptionFilter } from '../src/common/filters/domain-exception.filter';
 import { ValidationExceptionFilter } from '../src/common/filters/validation-exception.filter';
 import { cleanAllTables } from '../src/test/create-test-data-source';
+import { removeVideosFromStorage } from '../src/test/storage-cleanup';
 import { createVideoFixture } from '../src/test/video-fixture';
 import { User } from '../src/users/entities/user.entity';
-import { VideoStatus } from '../src/videos/videos.constants';
+import { VIDEO_QUEUE, VideoStatus } from '../src/videos/videos.constants';
 
 const POLL_INTERVAL_MS = 200;
 
@@ -22,6 +25,7 @@ export const WORKER_TEST_TIMEOUT_MS = WORKER_TIMEOUT_MS + 5000;
 export function setupVideosE2e() {
   let app: INestApplication<App>;
   let throttlerStorage: ThrottlerStorageService;
+  let queue: Queue;
 
   const http = () => request(app.getHttpServer());
 
@@ -92,6 +96,21 @@ export function setupVideosE2e() {
     );
   };
 
+  // The worker may still be writing a thumbnail for a job the test left behind.
+  const waitForIdleWorker = async () => {
+    const deadline = Date.now() + WORKER_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      const { active, waiting, delayed } = await queue.getJobCounts(
+        'active',
+        'waiting',
+        'delayed',
+      );
+      if (active + waiting + delayed === 0) return;
+      await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+    }
+    throw new Error('The video-worker did not finish its jobs in time');
+  };
+
   const context = {
     dataSource: undefined as unknown as DataSource,
     fixture: Buffer.alloc(0) as Buffer,
@@ -126,6 +145,7 @@ export function setupVideosE2e() {
     await app.init();
 
     context.dataSource = moduleFixture.get(DataSource);
+    queue = moduleFixture.get(getQueueToken(VIDEO_QUEUE.NAME));
     throttlerStorage =
       moduleFixture.get<ThrottlerStorageService>(ThrottlerStorage);
   }, WORKER_TIMEOUT_MS);
@@ -137,6 +157,11 @@ export function setupVideosE2e() {
     context.otherToken = await createUser();
     throttlerStorage.storage.clear();
   });
+
+  afterEach(async () => {
+    await waitForIdleWorker();
+    await removeVideosFromStorage(context.dataSource);
+  }, WORKER_TEST_TIMEOUT_MS);
 
   afterAll(async () => {
     await cleanAllTables(context.dataSource);

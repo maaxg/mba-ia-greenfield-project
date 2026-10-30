@@ -66,6 +66,26 @@ Fecha o multipart e publica o job de processamento, ou cancela o upload e remove
     - expect: HTTP 409
     - expect: `error` igual a `VIDEO_UPLOAD_CLOSED`
 
+#### 1.5. require-token-to-complete
+
+**Covers AC:** #8
+**Source:** auto
+**Last sync:** 2026-10-30T18:41:07Z
+
+**Steps:**
+  1. POST /videos/:slug/upload/complete sem token
+    - expect: HTTP 401
+
+#### 1.6. reject-invalid-token-when-completing
+
+**Covers AC:** #8
+**Source:** auto
+**Last sync:** 2026-10-30T18:41:07Z
+
+**Steps:**
+  1. POST /videos/:slug/upload/complete com um token inválido
+    - expect: HTTP 401
+
 ### 2. DELETE /videos/:slug/upload
 
 **Setup:** `setupVideosE2e` (`test/videos-e2e.helper.ts`) sobe o `AppModule` com `Test.createTestingModule`; o `beforeEach` limpa as tabelas e cria dois usuários confirmados e autenticados.
@@ -96,3 +116,34 @@ Fecha o multipart e publica o job de processamento, ou cancela o upload e remove
     - expect: `error` igual a `VIDEO_UPLOAD_CLOSED`
   3. GET /videos/:slug/status
     - expect: `status` continua `processing`
+
+#### 2.3. require-token-to-cancel
+
+**Covers AC:** #5
+**Source:** auto
+**Last sync:** 2026-10-30T18:41:07Z
+
+**Steps:**
+  1. DELETE /videos/:slug/upload sem token
+    - expect: HTTP 401
+
+#### 2.4. reject-invalid-token-when-cancelling
+
+**Covers AC:** #5
+**Source:** auto
+**Last sync:** 2026-10-30T18:41:07Z
+
+**Steps:**
+  1. DELETE /videos/:slug/upload com um token inválido
+    - expect: HTTP 401
+
+#### 2.5. deny-another-user-the-cancellation
+
+**Covers AC:** #5
+**Source:** auto
+**Last sync:** 2026-10-30T18:41:07Z
+
+**Steps:**
+  1. DELETE /videos/:slug/upload com o token do outro usuário
+    - expect: HTTP 403
+    - expect: `error` igual a `VIDEO_ACCESS_DENIED`

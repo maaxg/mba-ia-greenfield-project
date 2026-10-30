@@ -86,6 +86,55 @@ describe('videos-upload-parts.e2e-spec', () => {
     ]);
   });
 
+  it('should require a token to sign parts', async () => {
+    const { slug } = await ctx.startUpload(ctx.fixture);
+
+    await ctx
+      .http()
+      .post(`/videos/${slug}/upload/parts`)
+      .send({ part_numbers: [1] })
+      .expect(401);
+  });
+
+  it('should reject an invalid token when signing parts', async () => {
+    const { slug } = await ctx.startUpload(ctx.fixture);
+
+    await ctx
+      .http()
+      .post(`/videos/${slug}/upload/parts`)
+      .auth('invalid-token', { type: 'bearer' })
+      .send({ part_numbers: [1] })
+      .expect(401);
+  });
+
+  it('should require a token to list parts', async () => {
+    const { slug } = await ctx.startUpload(ctx.fixture);
+
+    await ctx.http().get(`/videos/${slug}/upload/parts`).expect(401);
+  });
+
+  it('should reject an invalid token when listing parts', async () => {
+    const { slug } = await ctx.startUpload(ctx.fixture);
+
+    await ctx
+      .http()
+      .get(`/videos/${slug}/upload/parts`)
+      .auth('invalid-token', { type: 'bearer' })
+      .expect(401);
+  });
+
+  it('should deny another user the list of parts', async () => {
+    const { slug } = await ctx.startUpload(ctx.fixture);
+
+    const { body } = await ctx
+      .http()
+      .get(`/videos/${slug}/upload/parts`)
+      .auth(ctx.otherToken, { type: 'bearer' })
+      .expect(403);
+
+    expect(body.error).toBe('VIDEO_ACCESS_DENIED');
+  });
+
   it('should not rate limit part signing', async () => {
     const { slug } = await ctx.startUpload(ctx.fixture);
 

@@ -1350,43 +1350,34 @@
         "type": "object",
         "properties": {
           "width": {
-            "type": "object",
+            "type": "number",
             "nullable": true
           },
           "height": {
-            "type": "object",
+            "type": "number",
             "nullable": true
           },
           "video_codec": {
-            "type": "object",
+            "type": "string",
             "nullable": true
           },
           "audio_codec": {
-            "type": "object",
+            "type": "string",
             "nullable": true
           },
           "bitrate": {
-            "type": "object",
+            "type": "number",
             "nullable": true
           },
           "frame_rate": {
-            "type": "object",
+            "type": "number",
             "nullable": true
           },
           "format_name": {
-            "type": "object",
+            "type": "string",
             "nullable": true
           }
-        },
-        "required": [
-          "width",
-          "height",
-          "video_codec",
-          "audio_codec",
-          "bitrate",
-          "frame_rate",
-          "format_name"
-        ]
+        }
       },
       "PublicVideoResponseDto": {
         "type": "object",
