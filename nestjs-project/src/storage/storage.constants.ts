@@ -1,0 +1,2 @@
+export const UPLOAD_PART_URL_TTL_SECONDS = 3600;
+export const READ_URL_TTL_SECONDS = 14400;
