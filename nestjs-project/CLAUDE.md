@@ -13,6 +13,8 @@ docker compose ps   # all services must show status "running"
 Then verify each infrastructure service is actually ready to accept connections — not just running:
 
 - **PostgreSQL:** `docker compose exec db pg_isready -U streamtube` — expect `accepting connections`
+- **Redis:** `docker compose exec redis redis-cli ping` — expect `PONG`
+- **MinIO:** `curl -f http://localhost:9000/minio/health/live` — expect status 200
 
 Only start the NestJS dev server (`npm run start:dev`) when the user **explicitly** asks to run the application — never as part of "start the environment".
 
@@ -34,6 +36,11 @@ docker compose exec nestjs-api npm run start:dev
 Services:
 - `nestjs-api` — NestJS API, port `3000`
 - `db` — PostgreSQL 17, port `5432`, database `streamtube`, user/password `streamtube`
+- `mailpit` — SMTP on `1025`, web UI on `8025`
+- `redis` — BullMQ backend, reachable only inside the Compose network (`maxmemory-policy noeviction`)
+- `minio` — S3-compatible storage, API on `9000`, console on `9001`, volume `minio-data`
+- `minio-init` — one-shot job that creates `S3_BUCKET`; it exits with code 0
+- `video-worker` — runs `npm run start:worker` and consumes the processing queue. It waits for `node_modules` on a fresh clone and has no watch mode: **run `docker compose restart video-worker` after changing worker code or reinstalling dependencies**
 
 All verification and teardown commands run on the **host machine**:
 
@@ -137,6 +144,60 @@ MAIL_FROM="StreamTube <noreply@streamtube.local>"
 ```
 
 Whenever possible, prefer storing only the bare address in `.env` and composing display names in code (e.g., in `mail.config.ts`) so the file stays shell-safe.
+
+## Videos
+
+Phase 03 lives in four modules. Decisions: `docs/decisions/technical-decisions-phase-03-videos.md`. Plan: `docs/phases/phase-03-videos/`.
+
+| Path | Responsibility |
+|---|---|
+| `src/videos/` | HTTP API, draft creation, upload lifecycle, public reads, queue publishing |
+| `src/storage/` | `StorageService`, the only code that talks to S3 |
+| `src/queue/` | Shared BullMQ connection |
+| `src/video-worker/` | `VideoProcessor`, `VideoProcessingService`, `FfmpegService`; entrypoint `src/worker.ts` |
+
+### Upload flow
+
+The file never passes through the API. The client calls `POST /videos`, requests URLs with `POST /videos/:slug/upload/parts`, sends each part to the storage with `PUT`, and finishes with `POST /videos/:slug/upload/complete`. `GET /videos/:slug/upload/parts` lists received parts so an interrupted upload can resume, and `DELETE /videos/:slug/upload` cancels it.
+
+### Endpoints
+
+| Route | Access |
+|---|---|
+| `POST /videos` | Authenticated, rate limited |
+| `POST`, `GET /videos/:slug/upload/parts` | Owner |
+| `POST /videos/:slug/upload/complete` | Owner |
+| `DELETE /videos/:slug/upload` | Owner |
+| `GET /videos/:slug/status` | Owner |
+| `GET /videos/:slug` | Public, `ready` only |
+| `GET /videos/:slug/stream`, `/download`, `/thumbnail` | Public, `ready` only; 302 to a signed URL |
+
+`VideosController` uses `@SkipThrottle()` because the global throttler would block part signing and playback. Only `POST /videos` keeps the default limit.
+
+### Status and failures
+
+`status` tracks the file lifecycle: `draft → processing → ready | failed`. Transitions are conditional `UPDATE`s, so concurrent completions and job redelivery are safe. Publication (Phase 04) is a separate concern and must not be added to this enum.
+
+The job `process-video` in queue `video-processing` carries `{ videoId }`, uses the video id as `jobId` and retries 3 times with exponential backoff. An invalid file throws `UnrecoverableError` and ends in `failed` with `INVALID_VIDEO_FILE`; exhausted attempts end with `PROCESSING_ERROR`; a queue failure during completion ends with `ENQUEUE_FAILED` and returns 503.
+
+FFmpeg runs through `child_process.spawn` and reads the signed URL over HTTP, so the worker never copies the video to disk. `fluent-ffmpeg` is deprecated; do not add it.
+
+### Storage conventions
+
+- One private bucket: `videos/{id}/original{ext}` and `videos/{id}/thumbnail.jpg`.
+- `StorageService` keeps two clients: internal (`S3_ENDPOINT`) and signing (`S3_PUBLIC_ENDPOINT`). The host is part of the signature, so a URL signed for one host fails on another.
+- `src/test/setup-env.ts` makes tests sign with `S3_ENDPOINT`, because the public host is not reachable from inside a container.
+- Limits: `VIDEO_MAX_SIZE_BYTES` (10 GiB) and `VIDEO_PART_SIZE_BYTES` (64 MiB).
+- MinIO images come from the `pgsty/*` fork: `minio/minio` is no longer available on Docker Hub.
+- Abandoned multipart uploads are not cleaned up automatically yet.
+
+### Testing videos
+
+- `test/videos.e2e-spec.ts` needs the real `video-worker` running and up to date.
+- `src/test/video-fixture.ts` generates the test MP4 with FFmpeg; do not commit binary fixtures.
+- Integration specs publish to a dedicated queue so the running worker does not consume their jobs.
+- `Video` must be listed in every `ALL_ENTITIES`, because `Channel` declares the inverse relation.
+- `@nestjs/bullmq` stays on the `11.x` line: `12.x` is ESM-only and Jest cannot load it. `ioredis` is a direct dependency because `bullmq` 6 treats it as optional.
 
 ## Build Assets
 

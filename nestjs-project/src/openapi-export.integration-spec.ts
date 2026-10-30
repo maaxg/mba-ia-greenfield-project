@@ -128,4 +128,22 @@ describe('exportSpec (integration)', () => {
       }
     }
   });
+
+  it('documents every video route', () => {
+    const paths = Object.keys(document.paths as Record<string, unknown>);
+
+    expect(paths).toEqual(
+      expect.arrayContaining([
+        '/videos',
+        '/videos/{slug}',
+        '/videos/{slug}/status',
+        '/videos/{slug}/stream',
+        '/videos/{slug}/download',
+        '/videos/{slug}/thumbnail',
+        '/videos/{slug}/upload',
+        '/videos/{slug}/upload/parts',
+        '/videos/{slug}/upload/complete',
+      ]),
+    );
+  });
 });
