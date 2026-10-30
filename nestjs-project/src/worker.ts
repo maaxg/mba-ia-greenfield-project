@@ -1,2 +1,8 @@
-// Placeholder entrypoint until SI-03.7 provides the worker module.
-setInterval(() => undefined, 60_000);
+import { NestFactory } from '@nestjs/core';
+import { VideoWorkerModule } from './video-worker/video-worker.module';
+
+async function bootstrap() {
+  const app = await NestFactory.createApplicationContext(VideoWorkerModule);
+  app.enableShutdownHooks();
+}
+void bootstrap();

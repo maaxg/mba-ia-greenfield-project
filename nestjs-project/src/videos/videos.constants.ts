@@ -28,3 +28,5 @@ export const VIDEO_CONTENT_TYPE_PREFIX = 'video/';
 export const THUMBNAIL_CONTENT_TYPE = 'image/jpeg';
 export const MAX_PARTS_PER_REQUEST = 100;
 export const MAX_PARTS_PER_UPLOAD = 10000;
+export const THUMBNAIL_FRAME_RATIO = 0.1;
+export const THUMBNAIL_MAX_WIDTH = 1280;
