@@ -1,0 +1,15 @@
+import { QueryFailedError } from 'typeorm';
+
+const PG_UNIQUE_VIOLATION = '23505';
+
+export function isPgUniqueViolationOnColumn(
+  err: unknown,
+  column: string,
+): boolean {
+  if (!(err instanceof QueryFailedError)) return false;
+  const { code, detail } = err as QueryFailedError & {
+    code?: string;
+    detail?: string;
+  };
+  return code === PG_UNIQUE_VIOLATION && !!detail?.includes(column);
+}
