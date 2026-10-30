@@ -12,6 +12,7 @@ import {
   cleanAllTables,
   createTestDataSource,
 } from '../test/create-test-data-source';
+import { removeVideosFromStorage } from '../test/storage-cleanup';
 import {
   createVideoFixture,
   FIXTURE_DURATION_SECONDS,
@@ -90,6 +91,10 @@ describe('VideoProcessingService (integration)', () => {
     });
   });
 
+  afterEach(async () => {
+    await removeVideosFromStorage(dataSource);
+  });
+
   afterAll(async () => {
     await cleanAllTables(dataSource);
     await dataSource.destroy();
@@ -125,10 +130,10 @@ describe('VideoProcessingService (integration)', () => {
   it('should surface a missing object as a retryable failure', async () => {
     const video = await createVideo(null);
 
-    const error = await service.process(video.id).catch((err: unknown) => err);
+    const processing = service.process(video.id);
 
-    expect(error).toBeInstanceOf(Error);
-    expect(error).not.toBeInstanceOf(InvalidVideoFileError);
+    await expect(processing).rejects.toBeInstanceOf(Error);
+    await expect(processing).rejects.not.toBeInstanceOf(InvalidVideoFileError);
   });
 
   it('should leave a ready video untouched on redelivery', async () => {

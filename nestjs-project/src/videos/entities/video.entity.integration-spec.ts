@@ -78,6 +78,18 @@ describe('Video entity (integration)', () => {
     ).rejects.toThrow(QueryFailedError);
   });
 
+  it('should reject a status outside the enum', async () => {
+    await expect(
+      videos.save(buildVideo({ status: 'archived' as VideoStatus })),
+    ).rejects.toThrow(QueryFailedError);
+  });
+
+  it('should reject a video without a title', async () => {
+    await expect(
+      videos.save(buildVideo({ title: null as unknown as string })),
+    ).rejects.toThrow(QueryFailedError);
+  });
+
   it('should read a 10 GiB size back as a number', async () => {
     const saved = await videos.save(buildVideo({ size_bytes: TEN_GIB }));
 

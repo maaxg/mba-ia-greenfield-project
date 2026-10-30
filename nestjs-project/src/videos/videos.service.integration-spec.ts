@@ -4,13 +4,15 @@ import { ConfigModule } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken, TypeOrmModule } from '@nestjs/typeorm';
 import { Queue } from 'bullmq';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, QueryFailedError, Repository } from 'typeorm';
 import { RefreshToken } from '../auth/entities/refresh-token.entity';
 import { VerificationToken } from '../auth/entities/verification-token.entity';
 import { ChannelsService } from '../channels/channels.service';
 import {
   VideoNotFoundException,
+  VideoProcessingUnavailableException,
   VideoUploadClosedException,
+  VideoUploadExpiredException,
   VideoUploadIncompleteException,
 } from '../common/exceptions/domain.exception';
 import { Channel } from '../channels/entities/channel.entity';
@@ -21,11 +23,24 @@ import {
   cleanAllTables,
   createTestDataSource,
 } from '../test/create-test-data-source';
+import { removeVideosFromStorage } from '../test/storage-cleanup';
 import { User } from '../users/entities/user.entity';
 import { Video } from './entities/video.entity';
+import { generateSlug } from './slug.util';
 import { VideoQueueService } from './video-queue.service';
-import { VIDEO_QUEUE, VideoStatus } from './videos.constants';
+import {
+  SLUG_MAX_RETRIES,
+  VIDEO_FAILURE_REASON,
+  VIDEO_QUEUE,
+  VideoStatus,
+} from './videos.constants';
 import { VideosService } from './videos.service';
+
+jest.mock('./slug.util', () => {
+  const actual =
+    jest.requireActual<typeof import('./slug.util')>('./slug.util');
+  return { ...actual, generateSlug: jest.fn(actual.generateSlug) };
+});
 
 const ALL_ENTITIES = [User, Channel, RefreshToken, VerificationToken, Video];
 
@@ -33,6 +48,7 @@ describe('VideosService (integration)', () => {
   let dataSource: DataSource;
   let service: VideosService;
   let storage: StorageService;
+  let videoQueue: VideoQueueService;
   let videos: Repository<Video>;
   let queue: Queue;
   let userId: string;
@@ -41,6 +57,17 @@ describe('VideosService (integration)', () => {
     filename: 'clip.mp4',
     size_bytes: 1024,
     content_type: 'video/mp4',
+  };
+
+  const expireUpload = async (id: string) => {
+    const video = await videos.findOneOrFail({
+      where: { id },
+      select: ['id', 'storage_key', 'upload_id'],
+    });
+    await storage.abortMultipartUpload(
+      video.storage_key,
+      video.upload_id as string,
+    );
   };
 
   const uploadFile = async (slug: string, body: Uint8Array<ArrayBuffer>) => {
@@ -81,6 +108,7 @@ describe('VideosService (integration)', () => {
     dataSource = moduleRef.get(DataSource);
     service = moduleRef.get(VideosService);
     storage = moduleRef.get(StorageService);
+    videoQueue = moduleRef.get(VideoQueueService);
     videos = moduleRef.get(getRepositoryToken(Video));
   });
 
@@ -96,6 +124,10 @@ describe('VideosService (integration)', () => {
       user_id: user.id,
     });
     userId = user.id;
+  });
+
+  afterEach(async () => {
+    await removeVideosFromStorage(dataSource);
   });
 
   afterAll(async () => {
@@ -129,6 +161,28 @@ describe('VideosService (integration)', () => {
         'storage down',
       );
       await expect(videos.count()).resolves.toBe(0);
+    });
+
+    it('should draw a new slug when the first one is taken', async () => {
+      const first = await service.initiateUpload(userId, validDto);
+      jest.mocked(generateSlug).mockReturnValueOnce(first.slug);
+
+      const second = await service.initiateUpload(userId, validDto);
+
+      expect(second.slug).not.toBe(first.slug);
+      await expect(videos.count()).resolves.toBe(2);
+    });
+
+    it('should give up when every slug attempt collides', async () => {
+      const { slug } = await service.initiateUpload(userId, validDto);
+      for (let attempt = 0; attempt <= SLUG_MAX_RETRIES; attempt++) {
+        jest.mocked(generateSlug).mockReturnValueOnce(slug);
+      }
+
+      await expect(service.initiateUpload(userId, validDto)).rejects.toThrow(
+        QueryFailedError,
+      );
+      await expect(videos.count()).resolves.toBe(1);
     });
   });
 
@@ -200,6 +254,53 @@ describe('VideosService (integration)', () => {
       expect(rejected).toHaveLength(1);
       expect(rejected[0].reason).toBeInstanceOf(VideoUploadClosedException);
     });
+
+    it('should return the video to draft when the storage rejects it', async () => {
+      const { id, slug } = await service.initiateUpload(userId, validDto);
+      const parts = await uploadFile(slug, new Uint8Array(1024));
+      jest
+        .spyOn(storage, 'completeMultipartUpload')
+        .mockRejectedValueOnce(new Error('storage down'));
+
+      await expect(service.completeUpload(userId, slug, parts)).rejects.toThrow(
+        'storage down',
+      );
+
+      const saved = await videos.findOneByOrFail({ id });
+      expect(saved.status).toBe(VideoStatus.DRAFT);
+      const retry = await service.completeUpload(userId, slug, parts);
+      expect(retry.status).toBe(VideoStatus.PROCESSING);
+    });
+
+    it('should mark the video as failed when the queue is unavailable', async () => {
+      const { id, slug } = await service.initiateUpload(userId, validDto);
+      const parts = await uploadFile(slug, new Uint8Array(1024));
+      jest
+        .spyOn(videoQueue, 'enqueueProcessing')
+        .mockRejectedValueOnce(new Error('redis down'));
+
+      await expect(service.completeUpload(userId, slug, parts)).rejects.toThrow(
+        VideoProcessingUnavailableException,
+      );
+
+      const saved = await videos.findOneByOrFail({ id });
+      expect(saved.status).toBe(VideoStatus.FAILED);
+      expect(saved.failure_reason).toBe(VIDEO_FAILURE_REASON.ENQUEUE_FAILED);
+    });
+
+    it('should report an upload the storage no longer has as expired', async () => {
+      const { id, slug } = await service.initiateUpload(userId, validDto);
+      await expireUpload(id);
+
+      await expect(
+        service.completeUpload(userId, slug, [
+          { part_number: 1, etag: '"abc"' },
+        ]),
+      ).rejects.toThrow(VideoUploadExpiredException);
+
+      const saved = await videos.findOneByOrFail({ id });
+      expect(saved.status).toBe(VideoStatus.DRAFT);
+    });
   });
 
   describe('cancelUpload', () => {
@@ -212,6 +313,15 @@ describe('VideosService (integration)', () => {
       await expect(service.cancelUpload(userId, slug)).rejects.toThrow(
         VideoNotFoundException,
       );
+    });
+
+    it('should remove the draft of an upload that already expired', async () => {
+      const { id, slug } = await service.initiateUpload(userId, validDto);
+      await expireUpload(id);
+
+      await service.cancelUpload(userId, slug);
+
+      await expect(videos.countBy({ id })).resolves.toBe(0);
     });
   });
 

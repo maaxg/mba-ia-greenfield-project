@@ -53,21 +53,15 @@ describe('FfmpegService (integration)', () => {
   });
 
   it('should report an unreachable source as a transient failure', async () => {
-    const error = await service
-      .probe('http://minio:9000/missing')
-      .catch((err: unknown) => err);
+    const probing = service.probe('http://minio:9000/missing');
 
-    expect(error).toBeInstanceOf(Error);
-    expect(error).not.toBeInstanceOf(InvalidVideoFileError);
+    await expect(probing).rejects.toBeInstanceOf(Error);
+    await expect(probing).rejects.not.toBeInstanceOf(InvalidVideoFileError);
   });
 
   it('should keep the source out of error messages', async () => {
     const source = `${garbagePath}?X-Amz-Signature=secret`;
 
-    const error = (await service
-      .probe(source)
-      .catch((err: unknown) => err)) as Error;
-
-    expect(error.message).not.toContain('X-Amz-Signature');
+    await expect(service.probe(source)).rejects.not.toThrow('X-Amz-Signature');
   });
 });
