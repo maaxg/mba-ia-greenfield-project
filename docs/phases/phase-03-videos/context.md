@@ -3,7 +3,7 @@ kind: phase
 name: phase-03-videos
 sources_mtime:
   docs/project-plan.md: "2026-10-30T09:29:31-03:00"
-  docs/decisions/technical-decisions-phase-03-videos.md: "2026-10-30T09:53:29-03:00"
+  docs/decisions/technical-decisions-phase-03-videos.md: "2026-10-30T09:55:52-03:00"
   docs/decisions/technical-decisions-phase-01-configuracao-base.md: "2026-10-30T09:29:57-03:00"
   docs/decisions/technical-decisions-phase-02-auth.md: "2026-10-30T09:29:57-03:00"
   docs/phases/phase-01-configuracao-base/context.md: "2026-10-30T09:29:57-03:00"
@@ -48,16 +48,16 @@ sources_mtime:
 
 | Ref | Source | Scope | Topic | Status | Decision | Libraries |
 |-----|--------|-------|-------|--------|----------|-----------|
-| phase-03-videos/TD-01 | technical-decisions-phase-03-videos.md | Backend | Tecnologia da fila de processamento | pending | — | — |
-| phase-03-videos/TD-02 | technical-decisions-phase-03-videos.md | Cross-layer | Estratégia de upload de arquivos de até 10GB | pending | — | — |
-| phase-03-videos/TD-03 | technical-decisions-phase-03-videos.md | Backend | Organização do object storage | pending | — | — |
-| phase-03-videos/TD-04 | technical-decisions-phase-03-videos.md | Repo-wide | Como o worker de vídeo roda | pending | — | — |
-| phase-03-videos/TD-05 | technical-decisions-phase-03-videos.md | Backend | Extração de metadados e geração de thumbnail | pending | — | — |
-| phase-03-videos/TD-06 | technical-decisions-phase-03-videos.md | Cross-layer | Estratégia de URL única | pending | — | — |
-| phase-03-videos/TD-07 | technical-decisions-phase-03-videos.md | Cross-layer | Streaming e download | pending | — | — |
-| phase-03-videos/TD-08 | technical-decisions-phase-03-videos.md | Cross-layer | Ciclo de status e tratamento de falhas | pending | — | — |
-| phase-03-videos/TD-09 | technical-decisions-phase-03-videos.md | Repo-wide | Chaves de ambiente e limites de upload | pending | — | — |
-| phase-03-videos/TD-10 | technical-decisions-phase-03-videos.md | Repo-wide | Estratégia de teste do fluxo assíncrono | pending | — | — |
+| phase-03-videos/TD-01 | technical-decisions-phase-03-videos.md | Backend | Tecnologia da fila de processamento | decided | A (BullMQ + Redis) | `bullmq@^6.5.1`, `@nestjs/bullmq@^12.0.0` |
+| phase-03-videos/TD-02 | technical-decisions-phase-03-videos.md | Cross-layer | Estratégia de upload de arquivos de até 10GB | decided | A (Multipart S3 direto ao storage com URLs pré-assinadas) | `@aws-sdk/client-s3@^3.1160.0`, `@aws-sdk/s3-request-presigner@^3.1160.0` |
+| phase-03-videos/TD-03 | technical-decisions-phase-03-videos.md | Backend | Organização do object storage | decided | A (Bucket único privado com prefixo por vídeo) | — |
+| phase-03-videos/TD-04 | technical-decisions-phase-03-videos.md | Repo-wide | Como o worker de vídeo roda | decided | A (Container separado, mesmo código-fonte) | — |
+| phase-03-videos/TD-05 | technical-decisions-phase-03-videos.md | Backend | Extração de metadados e geração de thumbnail | decided | A (`child_process.spawn` de ffprobe/ffmpeg lendo URL assinada) | — |
+| phase-03-videos/TD-06 | technical-decisions-phase-03-videos.md | Cross-layer | Estratégia de URL única | decided | A (Slug aleatório base62 de 11 caracteres) | — |
+| phase-03-videos/TD-07 | technical-decisions-phase-03-videos.md | Cross-layer | Streaming e download | decided | A (Redirect 302 para URL assinada) | — |
+| phase-03-videos/TD-08 | technical-decisions-phase-03-videos.md | Cross-layer | Ciclo de status e tratamento de falhas | decided | A (Quatro estados com transições condicionais) | — |
+| phase-03-videos/TD-09 | technical-decisions-phase-03-videos.md | Repo-wide | Chaves de ambiente e limites de upload | decided | A (Dois endpoints S3 e limites configuráveis) | — |
+| phase-03-videos/TD-10 | technical-decisions-phase-03-videos.md | Repo-wide | Estratégia de teste do fluxo assíncrono | decided | A (E2E contra o worker real do Compose, com fixture gerada por FFmpeg) | — |
 
 _Source files:_
 
@@ -83,23 +83,31 @@ _Source files:_
 
 **Recommendation:** Option A (BullMQ + Redis) — a fase tem um único tipo de job, e o que importa é retry, backoff e falha terminal, que o BullMQ entrega prontos com integração oficial NestJS 11; pg-boss evitaria um container, mas custaria DI manual e misturaria fila e dados no mesmo Postgres. O que se perde é a atomicidade entre banco e fila, tratada em TD-08.
 
-**Libraries:** —
+**Note:** Redis roda com `maxmemory-policy noeviction` e sem porta publicada no host: só a rede Compose o acessa.
+
+**Libraries:** `bullmq@^6.5.1`, `@nestjs/bullmq@^12.0.0`
 
 ### phase-03-videos/TD-02
 
 **Recommendation:** Option A (Multipart pré-assinado) — é a única opção em que a API nunca vê os bytes, e a retomada vem de `ListParts` sem estado adicional. Perde-se simplicidade no cliente: são quatro chamadas em vez de uma. Limites: 10.000 partes e mínimo de 5 MiB por parte, exceto a última.
 
-**Libraries:** —
+**Note:** Resolve MD-1: `DELETE /videos/:slug/upload` aborta o multipart e remove o rascunho; se o storage não conhecer mais o upload, a API responde `409 VIDEO_UPLOAD_EXPIRED`. Limpeza automática de uploads abandonados fica fora desta fase.
+
+**Libraries:** `@aws-sdk/client-s3@^3.1160.0`, `@aws-sdk/s3-request-presigner@^3.1160.0`
 
 ### phase-03-videos/TD-03
 
 **Recommendation:** Option A (Bucket único privado) — na Fase 03 não há tráfego que justifique CDN, e privado por padrão evita expor conteúdo de rascunho antes da Fase 04 definir visibilidade. Perde-se a thumbnail cacheável sem assinatura.
+
+**Note:** Resolve MD-2: o serviço one-shot `minio-init` cria o bucket com `mc` antes da API e do worker subirem. Imagens fixadas: `pgsty/minio:RELEASE.2026-08-04T00-00-00Z` e `pgsty/mc:RELEASE.2026-10-26T00-00-00Z`.
 
 **Libraries:** —
 
 ### phase-03-videos/TD-04
 
 **Recommendation:** Option A (Container separado, mesmo código) — mantém uma fonte única de `Video` e `StorageService`, respeita o isolamento pedido pelo diagrama e evita inventar um monorepo. Perde-se imagem mínima, aceitável porque a imagem de produção só existe na Fase 07.
+
+**Note:** Resolve DG-2: FFmpeg entra no `Dockerfile.dev`, compartilhado por `nestjs-api` e `video-worker`, porque a fixture de TD-10 é gerada no container do Jest. Resolve DG-3: o worker roda com `ts-node` em `npm run start:worker`, sem `nest start --watch`, para não disputar `dist/` com a API.
 
 **Libraries:** —
 
@@ -113,11 +121,15 @@ _Source files:_
 
 **Recommendation:** Option A (base62 de 11 caracteres) — atende "curta e sem conflito" com a garantia no banco, e não depende de título editável. Perde-se legibilidade na URL.
 
+**Note:** Todas as rotas de vídeo usam o slug como identificador externo; o UUID fica interno.
+
 **Libraries:** —
 
 ### phase-03-videos/TD-07
 
 **Recommendation:** Option A (302 para URL assinada) — alinhada ao diagrama e sem custo de banda na API, com Range entregue pelo próprio storage. Perde-se a ocultação da URL do storage e o bitrate adaptativo, que nenhum requisito da fase exige.
+
+**Note:** Resolve AMB-1: nesta fase, vídeo `ready` é acessível a qualquer pessoa com a URL, inclusive anônimos, e não há listagem. Visibilidade fica para a Fase 04. Resolve ICC-1: `VideosController` usa `@SkipThrottle()`, e só `POST /videos` mantém o limite padrão.
 
 **Libraries:** —
 
@@ -125,17 +137,23 @@ _Source files:_
 
 **Recommendation:** Option A (Quatro estados com transições condicionais) — é o ciclo pedido e a condição no `UPDATE` resolve concorrência sem lock. Se o enfileiramento falhar, o vídeo vai a `failed` com motivo. Perde-se a garantia de entrega do outbox; aceitável porque a falha é observável, não silenciosa.
 
+**Note:** Resolve AMB-2: `status` descreve o ciclo técnico do arquivo. `draft` significa "aguardando conclusão do upload"; a publicação editorial da Fase 04 será um campo próprio, sem alterar este ciclo.
+
 **Libraries:** —
 
 ### phase-03-videos/TD-09
 
 **Recommendation:** Option A (Dois endpoints) — mantém a regra do projeto no tráfego interno e não exige configuração na máquina do desenvolvedor. Parte de 64 MiB gera cerca de 160 partes para 10 GiB, longe do limite de 10.000. Perde-se a simplicidade de uma variável só.
 
+**Note:** Resolve ICC-2: `S3_PUBLIC_ENDPOINT` é a exceção documentada à regra de Docker Networking, porque é consumido pelo cliente, fora da rede Compose. Os testes rodam dentro do container e usam o valor de `S3_ENDPOINT` para assinar.
+
 **Libraries:** —
 
 ### phase-03-videos/TD-10
 
 **Recommendation:** Option A (Worker real do Compose) — é o único formato que prova que os serviços sobem e conversam. Testes de integração chamam o serviço de processamento direto para cobrir ramos de falha sem fila. Perde-se autonomia do teste em relação ao Compose.
+
+**Note:** Resolve ICC-3: o SI da entidade adiciona `Video` a todos os `ALL_ENTITIES`, a `cleanAllTables` e ao spec de migrations.
 
 **Libraries:** —
 

@@ -1,7 +1,7 @@
 ---
 scope_type: phase
 related_phases: [3]
-status: pending
+status: decided
 date: 2026-10-30
 scope_description: "Upload de até 10GB, fila e worker de vídeo, thumbnail, URL única, streaming e download sobre object storage S3-compatível"
 ---
@@ -12,6 +12,8 @@ _Subprojects in scope:_
 
 - `nestjs-project/` — recebe o módulo de vídeos, o worker, a infraestrutura de storage e fila, a migration e os testes.
 - `next-frontend/` — sem decisão aberta: a interface de vídeo está fora do escopo do desafio desta fase. Os contratos de TD-02 e TD-07 são `Cross-layer` porque o cliente futuro os consumirá, mas nenhum arquivo do frontend é alterado.
+
+_Autoria das decisões:_ o usuário delegou as escolhas ao agente na etapa de `plan-resolve` ("vai fundo"); todas seguem a recomendação registrada em cada TD.
 
 _Fontes consultadas:_ documentação via Context7 (`/taskforcesh/bullmq`, `/aws/aws-sdk-js-v3`, `/minio/minio`, `/minio/mc`), [limites de multipart do S3](https://docs.aws.amazon.com/AmazonS3/latest/userguide/qfacts.html), [página npm do fluent-ffmpeg](https://npmjs.com/package/fluent-ffmpeg) e verificação direta de disponibilidade de imagens com `docker pull`.
 
@@ -44,8 +46,12 @@ _Fontes consultadas:_ documentação via Context7 (`/taskforcesh/bullmq`, `/aws/
 
 **Recommendation:** Option A (BullMQ + Redis) — a fase tem um único tipo de job, e o que importa é retry, backoff e falha terminal, que o BullMQ entrega prontos com integração oficial NestJS 11; pg-boss evitaria um container, mas custaria DI manual e misturaria fila e dados no mesmo Postgres. O que se perde é a atomicidade entre banco e fila, tratada em TD-08.
 
-**Decision:** _[pending]_
+**Decision:** A (BullMQ + Redis)
 
+
+**Note:** Redis roda com `maxmemory-policy noeviction` e sem porta publicada no host: só a rede Compose o acessa.
+
+**Libraries:** `bullmq@^6.5.1`, `@nestjs/bullmq@^12.0.0`
 ---
 
 ## TD-02: Estratégia de upload de arquivos de até 10GB
@@ -75,8 +81,12 @@ _Fontes consultadas:_ documentação via Context7 (`/taskforcesh/bullmq`, `/aws/
 
 **Recommendation:** Option A (Multipart pré-assinado) — é a única opção em que a API nunca vê os bytes, e a retomada vem de `ListParts` sem estado adicional. Perde-se simplicidade no cliente: são quatro chamadas em vez de uma. Limites: 10.000 partes e mínimo de 5 MiB por parte, exceto a última.
 
-**Decision:** _[pending]_
+**Decision:** A (Multipart S3 direto ao storage com URLs pré-assinadas)
 
+
+**Note:** Resolve MD-1: `DELETE /videos/:slug/upload` aborta o multipart e remove o rascunho; se o storage não conhecer mais o upload, a API responde `409 VIDEO_UPLOAD_EXPIRED`. Limpeza automática de uploads abandonados fica fora desta fase.
+
+**Libraries:** `@aws-sdk/client-s3@^3.1160.0`, `@aws-sdk/s3-request-presigner@^3.1160.0`
 ---
 
 ## TD-03: Organização do object storage
@@ -101,8 +111,12 @@ _Fontes consultadas:_ documentação via Context7 (`/taskforcesh/bullmq`, `/aws/
 
 **Recommendation:** Option A (Bucket único privado) — na Fase 03 não há tráfego que justifique CDN, e privado por padrão evita expor conteúdo de rascunho antes da Fase 04 definir visibilidade. Perde-se a thumbnail cacheável sem assinatura.
 
-**Decision:** _[pending]_
+**Decision:** A (Bucket único privado com prefixo por vídeo)
 
+
+**Note:** Resolve MD-2: o serviço one-shot `minio-init` cria o bucket com `mc` antes da API e do worker subirem. Imagens fixadas: `pgsty/minio:RELEASE.2026-08-04T00-00-00Z` e `pgsty/mc:RELEASE.2026-10-26T00-00-00Z`.
+
+**Libraries:** —
 ---
 
 ## TD-04: Como o worker de vídeo roda
@@ -132,8 +146,12 @@ _Fontes consultadas:_ documentação via Context7 (`/taskforcesh/bullmq`, `/aws/
 
 **Recommendation:** Option A (Container separado, mesmo código) — mantém uma fonte única de `Video` e `StorageService`, respeita o isolamento pedido pelo diagrama e evita inventar um monorepo. Perde-se imagem mínima, aceitável porque a imagem de produção só existe na Fase 07.
 
-**Decision:** _[pending]_
+**Decision:** A (Container separado, mesmo código-fonte)
 
+
+**Note:** Resolve DG-2: FFmpeg entra no `Dockerfile.dev`, compartilhado por `nestjs-api` e `video-worker`, porque a fixture de TD-10 é gerada no container do Jest. Resolve DG-3: o worker roda com `ts-node` em `npm run start:worker`, sem `nest start --watch`, para não disputar `dist/` com a API.
+
+**Libraries:** —
 ---
 
 ## TD-05: Extração de metadados e geração de thumbnail
@@ -163,8 +181,10 @@ _Fontes consultadas:_ documentação via Context7 (`/taskforcesh/bullmq`, `/aws/
 
 **Recommendation:** Option A (spawn com URL assinada) — zero dependência morta e custo de disco constante mesmo para 10GB; a fragilidade de rede é coberta pelos retries de TD-08. Perde-se a conveniência de um wrapper. Frame da thumbnail: 10% da duração, para evitar a tela preta inicial comum.
 
-**Decision:** _[pending]_
+**Decision:** A (`child_process.spawn` de ffprobe/ffmpeg lendo URL assinada)
 
+
+**Libraries:** —
 ---
 
 ## TD-06: Estratégia de URL única
@@ -194,8 +214,12 @@ _Fontes consultadas:_ documentação via Context7 (`/taskforcesh/bullmq`, `/aws/
 
 **Recommendation:** Option A (base62 de 11 caracteres) — atende "curta e sem conflito" com a garantia no banco, e não depende de título editável. Perde-se legibilidade na URL.
 
-**Decision:** _[pending]_
+**Decision:** A (Slug aleatório base62 de 11 caracteres)
 
+
+**Note:** Todas as rotas de vídeo usam o slug como identificador externo; o UUID fica interno.
+
+**Libraries:** —
 ---
 
 ## TD-07: Streaming e download
@@ -225,8 +249,12 @@ _Fontes consultadas:_ documentação via Context7 (`/taskforcesh/bullmq`, `/aws/
 
 **Recommendation:** Option A (302 para URL assinada) — alinhada ao diagrama e sem custo de banda na API, com Range entregue pelo próprio storage. Perde-se a ocultação da URL do storage e o bitrate adaptativo, que nenhum requisito da fase exige.
 
-**Decision:** _[pending]_
+**Decision:** A (Redirect 302 para URL assinada)
 
+
+**Note:** Resolve AMB-1: nesta fase, vídeo `ready` é acessível a qualquer pessoa com a URL, inclusive anônimos, e não há listagem. Visibilidade fica para a Fase 04. Resolve ICC-1: `VideosController` usa `@SkipThrottle()`, e só `POST /videos` mantém o limite padrão.
+
+**Libraries:** —
 ---
 
 ## TD-08: Ciclo de status e tratamento de falhas
@@ -256,8 +284,12 @@ _Fontes consultadas:_ documentação via Context7 (`/taskforcesh/bullmq`, `/aws/
 
 **Recommendation:** Option A (Quatro estados com transições condicionais) — é o ciclo pedido e a condição no `UPDATE` resolve concorrência sem lock. Se o enfileiramento falhar, o vídeo vai a `failed` com motivo. Perde-se a garantia de entrega do outbox; aceitável porque a falha é observável, não silenciosa.
 
-**Decision:** _[pending]_
+**Decision:** A (Quatro estados com transições condicionais)
 
+
+**Note:** Resolve AMB-2: `status` descreve o ciclo técnico do arquivo. `draft` significa "aguardando conclusão do upload"; a publicação editorial da Fase 04 será um campo próprio, sem alterar este ciclo.
+
+**Libraries:** —
 ---
 
 ## TD-09: Chaves de ambiente e limites de upload
@@ -282,8 +314,12 @@ _Fontes consultadas:_ documentação via Context7 (`/taskforcesh/bullmq`, `/aws/
 
 **Recommendation:** Option A (Dois endpoints) — mantém a regra do projeto no tráfego interno e não exige configuração na máquina do desenvolvedor. Parte de 64 MiB gera cerca de 160 partes para 10 GiB, longe do limite de 10.000. Perde-se a simplicidade de uma variável só.
 
-**Decision:** _[pending]_
+**Decision:** A (Dois endpoints S3 e limites configuráveis)
 
+
+**Note:** Resolve ICC-2: `S3_PUBLIC_ENDPOINT` é a exceção documentada à regra de Docker Networking, porque é consumido pelo cliente, fora da rede Compose. Os testes rodam dentro do container e usam o valor de `S3_ENDPOINT` para assinar.
+
+**Libraries:** —
 ---
 
 ## TD-10: Estratégia de teste do fluxo assíncrono
@@ -308,21 +344,25 @@ _Fontes consultadas:_ documentação via Context7 (`/taskforcesh/bullmq`, `/aws/
 
 **Recommendation:** Option A (Worker real do Compose) — é o único formato que prova que os serviços sobem e conversam. Testes de integração chamam o serviço de processamento direto para cobrir ramos de falha sem fila. Perde-se autonomia do teste em relação ao Compose.
 
-**Decision:** _[pending]_
+**Decision:** A (E2E contra o worker real do Compose, com fixture gerada por FFmpeg)
 
+
+**Note:** Resolve ICC-3: o SI da entidade adiciona `Video` a todos os `ALL_ENTITIES`, a `cleanAllTables` e ao spec de migrations.
+
+**Libraries:** —
 ---
 
 ## Decisions Summary
 
 | ID | Scope | Decision | Recommendation | Choice |
 |----|-------|----------|---------------|--------|
-| TD-01 | Backend | Tecnologia da fila | BullMQ + Redis | _[pending]_ |
-| TD-02 | Cross-layer | Upload de até 10GB | Multipart pré-assinado direto ao storage | _[pending]_ |
-| TD-03 | Backend | Organização do storage | Bucket único privado com prefixo por vídeo | _[pending]_ |
-| TD-04 | Repo-wide | Execução do worker | Container separado, mesmo código | _[pending]_ |
-| TD-05 | Backend | Metadados e thumbnail | spawn de ffprobe/ffmpeg com URL assinada | _[pending]_ |
-| TD-06 | Cross-layer | URL única | Slug base62 de 11 caracteres | _[pending]_ |
-| TD-07 | Cross-layer | Streaming e download | 302 para URL assinada | _[pending]_ |
-| TD-08 | Cross-layer | Ciclo de status e falhas | Quatro estados com transições condicionais | _[pending]_ |
-| TD-09 | Repo-wide | Chaves de ambiente e limites | Dois endpoints S3, limites configuráveis | _[pending]_ |
-| TD-10 | Repo-wide | Teste do fluxo assíncrono | E2E contra o worker real do Compose | _[pending]_ |
+| TD-01 | Backend | Tecnologia da fila | BullMQ + Redis | A |
+| TD-02 | Cross-layer | Upload de até 10GB | Multipart pré-assinado direto ao storage | A |
+| TD-03 | Backend | Organização do storage | Bucket único privado com prefixo por vídeo | A |
+| TD-04 | Repo-wide | Execução do worker | Container separado, mesmo código | A |
+| TD-05 | Backend | Metadados e thumbnail | spawn de ffprobe/ffmpeg com URL assinada | A |
+| TD-06 | Cross-layer | URL única | Slug base62 de 11 caracteres | A |
+| TD-07 | Cross-layer | Streaming e download | 302 para URL assinada | A |
+| TD-08 | Cross-layer | Ciclo de status e falhas | Quatro estados com transições condicionais | A |
+| TD-09 | Repo-wide | Chaves de ambiente e limites | Dois endpoints S3, limites configuráveis | A |
+| TD-10 | Repo-wide | Teste do fluxo assíncrono | E2E contra o worker real do Compose | A |
