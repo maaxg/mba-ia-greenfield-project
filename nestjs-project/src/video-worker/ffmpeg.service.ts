@@ -100,7 +100,11 @@ export class FfmpegService {
     return frame;
   }
 
-  private run(command: string, input: string, args: string[]): Promise<Buffer> {
+  private async run(
+    command: string,
+    input: string,
+    args: string[],
+  ): Promise<Buffer> {
     return new Promise((resolve, reject) => {
       const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] });
       const stdout: Buffer[] = [];

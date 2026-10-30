@@ -2,25 +2,25 @@ import { ApiProperty } from '@nestjs/swagger';
 import { VideoStatus } from '../videos.constants';
 
 export class VideoMetadataDto {
-  @ApiProperty({ nullable: true })
+  @ApiProperty({ type: Number, required: false, nullable: true })
   width: number | null;
 
-  @ApiProperty({ nullable: true })
+  @ApiProperty({ type: Number, required: false, nullable: true })
   height: number | null;
 
-  @ApiProperty({ nullable: true })
+  @ApiProperty({ type: String, required: false, nullable: true })
   video_codec: string | null;
 
-  @ApiProperty({ nullable: true })
+  @ApiProperty({ type: String, required: false, nullable: true })
   audio_codec: string | null;
 
-  @ApiProperty({ nullable: true })
+  @ApiProperty({ type: Number, required: false, nullable: true })
   bitrate: number | null;
 
-  @ApiProperty({ nullable: true })
+  @ApiProperty({ type: Number, required: false, nullable: true })
   frame_rate: number | null;
 
-  @ApiProperty({ nullable: true })
+  @ApiProperty({ type: String, required: false, nullable: true })
   format_name: string | null;
 }
 

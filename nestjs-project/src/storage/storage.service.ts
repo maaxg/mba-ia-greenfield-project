@@ -171,7 +171,7 @@ export class StorageService {
     return this.presignRead(this.internalClient, key, {});
   }
 
-  private presignRead(
+  private async presignRead(
     client: S3Client,
     key: string,
     { contentType, downloadFilename }: PresignReadOptions,
