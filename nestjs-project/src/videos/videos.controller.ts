@@ -1,4 +1,4 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -12,6 +12,9 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { ApiErrorEnvelope } from '../common/openapi/api-error-envelope.dto';
 import { InitiateUploadDto } from './dto/initiate-upload.dto';
 import { InitiateUploadResponseDto } from './dto/initiate-upload-response.dto';
+import { ListUploadedPartsResponseDto } from './dto/list-uploaded-parts-response.dto';
+import { SignUploadPartsDto } from './dto/sign-upload-parts.dto';
+import { SignUploadPartsResponseDto } from './dto/sign-upload-parts-response.dto';
 import { VideosService } from './videos.service';
 
 const errorResponse = (status: number, description: string) =>
@@ -51,5 +54,56 @@ export class VideosController {
     @Body() dto: InitiateUploadDto,
   ): Promise<InitiateUploadResponseDto> {
     return this.videosService.initiateUpload(user.sub, dto);
+  }
+
+  @Post(':slug/upload/parts')
+  @HttpCode(200)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Sign upload URLs for file parts',
+    description:
+      'Returns one presigned URL per requested part. The client sends each part directly to the object storage with PUT and keeps the returned ETag.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Presigned URLs for the requested parts',
+    type: SignUploadPartsResponseDto,
+  })
+  @errorResponse(400, 'Invalid request body or part number out of range')
+  @errorResponse(401, 'Missing or invalid access token')
+  @errorResponse(403, 'The user does not own this video')
+  @errorResponse(404, 'Video not found')
+  @errorResponse(409, 'The upload is already closed')
+  signUploadParts(
+    @CurrentUser() user: JwtPayload,
+    @Param('slug') slug: string,
+    @Body() dto: SignUploadPartsDto,
+  ): Promise<SignUploadPartsResponseDto> {
+    return this.videosService.signUploadParts(user.sub, slug, dto.part_numbers);
+  }
+
+  @Get(':slug/upload/parts')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'List uploaded parts',
+    description:
+      'Returns the parts the storage already received, so an interrupted upload can resume.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Parts already received by the storage',
+    type: ListUploadedPartsResponseDto,
+  })
+  @errorResponse(401, 'Missing or invalid access token')
+  @errorResponse(403, 'The user does not own this video')
+  @errorResponse(404, 'Video not found')
+  @errorResponse(409, 'The upload is closed or no longer exists')
+  async listUploadedParts(
+    @CurrentUser() user: JwtPayload,
+    @Param('slug') slug: string,
+  ): Promise<ListUploadedPartsResponseDto> {
+    return {
+      parts: await this.videosService.listUploadedParts(user.sub, slug),
+    };
   }
 }

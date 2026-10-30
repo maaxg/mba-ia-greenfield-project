@@ -2,7 +2,11 @@ import { QueryFailedError } from 'typeorm';
 import {
   ChannelNotFoundException,
   UnsupportedVideoTypeException,
+  VideoAccessDeniedException,
+  VideoNotFoundException,
+  VideoPartOutOfRangeException,
   VideoTooLargeException,
+  VideoUploadClosedException,
 } from '../common/exceptions/domain.exception';
 import { VideoStatus } from './videos.constants';
 import { VideosService } from './videos.service';
@@ -24,13 +28,31 @@ function slugViolation(): QueryFailedError {
   return err;
 }
 
+const ownedVideo = (overrides: Record<string, unknown> = {}) => ({
+  id: 'video-id',
+  slug: 'abcdefghijk',
+  status: VideoStatus.DRAFT,
+  storage_key: 'videos/video-id/original.mp4',
+  upload_id: 'upload',
+  size_bytes: 100 * MIB,
+  channel: { user_id: USER_ID },
+  ...overrides,
+});
+
 describe('VideosService', () => {
+  let queryBuilder: Record<string, jest.Mock>;
   let repository: Record<string, jest.Mock>;
   let channels: Record<string, jest.Mock>;
   let storage: Record<string, jest.Mock>;
   let service: VideosService;
 
   beforeEach(() => {
+    queryBuilder = {
+      addSelect: jest.fn().mockReturnThis(),
+      innerJoinAndSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      getOne: jest.fn().mockResolvedValue(ownedVideo()),
+    };
     repository = {
       create: jest.fn((data) => data),
       save: jest.fn(async (video) => ({
@@ -39,9 +61,14 @@ describe('VideosService', () => {
       })),
       update: jest.fn(),
       delete: jest.fn(),
+      createQueryBuilder: jest.fn(() => queryBuilder),
     };
     channels = { findByUserId: jest.fn().mockResolvedValue({ id: 'channel' }) };
-    storage = { createMultipartUpload: jest.fn().mockResolvedValue('upload') };
+    storage = {
+      createMultipartUpload: jest.fn().mockResolvedValue('upload'),
+      presignUploadPart: jest.fn().mockResolvedValue('http://signed'),
+      listParts: jest.fn().mockResolvedValue([]),
+    };
     service = new VideosService(
       repository as any,
       channels as any,
@@ -153,6 +180,52 @@ describe('VideosService', () => {
         'storage',
       );
       expect(repository.delete).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('signUploadParts', () => {
+    it('should sign one URL per requested part', async () => {
+      queryBuilder.getOne.mockResolvedValue(
+        ownedVideo({ size_bytes: 100 * MIB }),
+      );
+
+      const result = await service.signUploadParts(USER_ID, 'slug', [1, 2]);
+
+      expect(result.parts).toEqual([
+        { part_number: 1, url: 'http://signed' },
+        { part_number: 2, url: 'http://signed' },
+      ]);
+      expect(result.expires_in).toBe(3600);
+    });
+
+    it('should reject a part beyond the declared file', async () => {
+      await expect(
+        service.signUploadParts(USER_ID, 'slug', [3]),
+      ).rejects.toThrow(VideoPartOutOfRangeException);
+    });
+
+    it('should reject an unknown video', async () => {
+      queryBuilder.getOne.mockResolvedValue(null);
+
+      await expect(
+        service.signUploadParts(USER_ID, 'slug', [1]),
+      ).rejects.toThrow(VideoNotFoundException);
+    });
+
+    it('should reject a video owned by another user', async () => {
+      await expect(
+        service.signUploadParts('other-user', 'slug', [1]),
+      ).rejects.toThrow(VideoAccessDeniedException);
+    });
+
+    it('should reject a video that left the draft status', async () => {
+      queryBuilder.getOne.mockResolvedValue(
+        ownedVideo({ status: VideoStatus.PROCESSING }),
+      );
+
+      await expect(
+        service.signUploadParts(USER_ID, 'slug', [1]),
+      ).rejects.toThrow(VideoUploadClosedException);
     });
   });
 });

@@ -100,4 +100,24 @@ describe('VideosService (integration)', () => {
       await expect(videos.count()).resolves.toBe(0);
     });
   });
+
+  describe('upload parts', () => {
+    it('should list a part sent through a signed URL', async () => {
+      const { slug } = await service.initiateUpload(userId, validDto);
+      const { parts } = await service.signUploadParts(userId, slug, [1]);
+
+      const res = await fetch(parts[0].url, {
+        method: 'PUT',
+        body: new Uint8Array(1024),
+      });
+
+      await expect(service.listUploadedParts(userId, slug)).resolves.toEqual([
+        {
+          part_number: 1,
+          etag: res.headers.get('etag'),
+          size_bytes: 1024,
+        },
+      ]);
+    });
+  });
 });

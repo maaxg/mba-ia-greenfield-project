@@ -8,19 +8,27 @@ import { ChannelsService } from '../channels/channels.service';
 import {
   ChannelNotFoundException,
   UnsupportedVideoTypeException,
+  VideoAccessDeniedException,
+  VideoNotFoundException,
+  VideoPartOutOfRangeException,
   VideoTooLargeException,
+  VideoUploadClosedException,
 } from '../common/exceptions/domain.exception';
 import videoConfig from '../config/video.config';
 import { isPgUniqueViolationOnColumn } from '../database/pg-errors';
+import { UPLOAD_PART_URL_TTL_SECONDS } from '../storage/storage.constants';
 import { StorageService } from '../storage/storage.service';
+import type { UploadedPart } from '../storage/storage.types';
 import { InitiateUploadDto } from './dto/initiate-upload.dto';
 import { InitiateUploadResponseDto } from './dto/initiate-upload-response.dto';
+import { SignUploadPartsResponseDto } from './dto/sign-upload-parts-response.dto';
 import { Video } from './entities/video.entity';
 import { generateSlug } from './slug.util';
 import {
   MAX_PARTS_PER_UPLOAD,
   SLUG_MAX_RETRIES,
   VIDEO_CONTENT_TYPE_PREFIX,
+  VideoStatus,
 } from './videos.constants';
 
 const SLUG_COLUMN = 'slug';
@@ -64,6 +72,67 @@ export class VideosService {
       part_size_bytes: partSize,
       part_count: Math.ceil(video.size_bytes / partSize),
     };
+  }
+
+  async signUploadParts(
+    userId: string,
+    slug: string,
+    partNumbers: number[],
+  ): Promise<SignUploadPartsResponseDto> {
+    const video = await this.getOpenUpload(userId, slug);
+    const partCount = Math.ceil(
+      video.size_bytes / this.calculatePartSize(video.size_bytes),
+    );
+    if (partNumbers.some((part) => part > partCount)) {
+      throw new VideoPartOutOfRangeException();
+    }
+
+    const parts = await Promise.all(
+      partNumbers.map(async (partNumber) => ({
+        part_number: partNumber,
+        url: await this.storageService.presignUploadPart(
+          video.storage_key,
+          video.upload_id as string,
+          partNumber,
+        ),
+      })),
+    );
+    return { parts, expires_in: UPLOAD_PART_URL_TTL_SECONDS };
+  }
+
+  async listUploadedParts(
+    userId: string,
+    slug: string,
+  ): Promise<UploadedPart[]> {
+    const video = await this.getOpenUpload(userId, slug);
+    return this.storageService.listParts(
+      video.storage_key,
+      video.upload_id as string,
+    );
+  }
+
+  private async getOpenUpload(userId: string, slug: string): Promise<Video> {
+    const video = await this.getOwnedVideo(userId, slug);
+    if (video.status !== VideoStatus.DRAFT) {
+      throw new VideoUploadClosedException();
+    }
+    return video;
+  }
+
+  private async getOwnedVideo(userId: string, slug: string): Promise<Video> {
+    const video = await this.videoRepository
+      .createQueryBuilder('video')
+      .addSelect('video.upload_id')
+      .innerJoinAndSelect('video.channel', 'channel')
+      .where('video.slug = :slug', { slug })
+      .getOne();
+    if (!video) {
+      throw new VideoNotFoundException();
+    }
+    if (video.channel.user_id !== userId) {
+      throw new VideoAccessDeniedException();
+    }
+    return video;
   }
 
   private async createDraft(
